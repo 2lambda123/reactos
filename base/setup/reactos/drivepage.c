@@ -33,9 +33,6 @@
 
 #include "resource.h"
 
-#define NDEBUG
-#include <debug.h>
-
 /* GLOBALS ******************************************************************/
 
 #define IDS_LIST_COLUMN_FIRST IDS_PARTITION_NAME
@@ -101,10 +98,40 @@ PartitionDlgProc(HWND hwndDlg,
                  WPARAM wParam,
                  LPARAM lParam)
 {
+    PPARTENTRY PartEntry;
+
+    /* Retrieve the selected partition */
+    PartEntry = (PPARTENTRY)GetWindowLongPtrW(hwndDlg, GWLP_USERDATA);
+
     switch (uMsg)
     {
         case WM_INITDIALOG:
+        {
+            ULONG Index = 0;
+            PCWSTR FileSystemName;
+            INT nSel;
+
+            /* Save pointer to the global setup data */
+            PartEntry = (PPARTENTRY)lParam;
+            SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (DWORD_PTR)PartEntry);
+
+            /* List the well-known filesystems */
+            while (GetRegisteredFileSystems(Index++, &FileSystemName))
+            {
+                // ComboBox_InsertString()
+                SendDlgItemMessageW(hwndDlg, IDC_FSTYPE, CB_INSERTSTRING, -1, (LPARAM)FileSystemName);
+            }
+
+            // FIXME: Use "DefaultFs"
+            nSel = SendDlgItemMessageW(hwndDlg, IDC_FSTYPE, CB_FINDSTRINGEXACT, 0, (LPARAM)PartEntry->FileSystem);
+            if (nSel == CB_ERR)
+                nSel = 0;
+            SendDlgItemMessageW(hwndDlg, IDC_FSTYPE, CB_SETCURSEL, (WPARAM)nSel, 0);
+
+            // TODO: Check 'Keep existing filesystem' if PartEntry->New || PartEntry->FormatState == Unformatted .
+
             break;
+        }
 
         case WM_COMMAND:
         {
@@ -206,21 +233,23 @@ DisplayStuffUsingWin32Setup(HWND hwndDlg)
 
 
 HTLITEM
-TreeListAddItem(IN HWND hTreeList,
-                IN HTLITEM hParent,
-                IN LPWSTR lpText,
-                IN INT iImage,
-                IN INT iSelectedImage,
-                IN LPARAM lParam)
+TreeListAddItem(
+    _In_ HWND hTreeList,
+    _In_opt_ HTLITEM hParent,
+    _In_opt_ HTLITEM hInsertAfter,
+    _In_ LPCWSTR lpText,
+    _In_ INT iImage,
+    _In_ INT iSelectedImage,
+    _In_ LPARAM lParam)
 {
-    TL_INSERTSTRUCTW Insert;
+    TLINSERTSTRUCTW Insert;
 
     ZeroMemory(&Insert, sizeof(Insert));
 
     Insert.item.mask = TVIF_TEXT | TVIF_PARAM | TVIF_IMAGE | TVIF_SELECTEDIMAGE;
-    Insert.hInsertAfter = TVI_LAST;
     Insert.hParent = hParent;
-    Insert.item.pszText = lpText;
+    Insert.hInsertAfter = (hInsertAfter ? hInsertAfter : TVI_LAST);
+    Insert.item.pszText = (LPWSTR)lpText;
     Insert.item.iImage = iImage;
     Insert.item.iSelectedImage = iSelectedImage;
     Insert.item.lParam = lParam;
@@ -230,6 +259,45 @@ TreeListAddItem(IN HWND hTreeList,
     // Insert.item.state = INDEXTOOVERLAYMASK(1);
 
     return TreeList_InsertItem(hTreeList, &Insert);
+}
+
+LPARAM
+TreeListGetItemData(
+    _In_ HWND hTreeList,
+    _In_ HTLITEM hItem)
+{
+    TLITEMW tlItem;
+
+    tlItem.mask = TVIF_PARAM;
+    tlItem.hItem = hItem;
+
+    TreeList_GetItem(hTreeList, &tlItem);
+
+    return tlItem.lParam;
+}
+
+PPARTENTRY
+GetSelectedPartition(
+    _In_ HWND hTreeList,
+    _Out_opt_ HTLITEM* phItem)
+{
+    HTLITEM hItem, hParentItem;
+    PPARTENTRY PartEntry;
+
+    hItem = TreeList_GetSelection(hTreeList);
+    if (!hItem)
+        return NULL;
+
+    hParentItem = TreeList_GetParent(hTreeList, hItem);
+    /* May or may not be a PPARTENTRY: this is a PPARTENTRY only when hParentItem != NULL */
+    PartEntry = (PPARTENTRY)TreeListGetItemData(hTreeList, hItem);
+    if (!hParentItem || !PartEntry)
+        return NULL;
+
+    if (phItem)
+        *phItem = hItem;
+
+    return PartEntry;
 }
 
 
@@ -327,8 +395,8 @@ PrintPartitionData(
                          (PartEntry->DriveLetter == 0) ? L'-' : L':');
     }
 
-    htiPart = TreeListAddItem(hWndList, htiParent, LineBuffer,
-                              1, 1,
+    htiPart = TreeListAddItem(hWndList, htiParent, NULL,
+                              LineBuffer, 1, 1,
                               (LPARAM)PartEntry);
 
     /* Determine partition type */
@@ -516,8 +584,8 @@ PrintDiskData(
         }
     }
 
-    htiDisk = TreeListAddItem(hWndList, NULL, LineBuffer,
-                              0, 0,
+    htiDisk = TreeListAddItem(hWndList, NULL, NULL,
+                              LineBuffer, 0, 0,
                               (LPARAM)DiskEntry);
 
     /* Disk type: MBR, GPT or RAW (Uninitialized) */
@@ -681,19 +749,24 @@ DriveDlgProc(
             switch (LOWORD(wParam))
             {
                 case IDC_PARTMOREOPTS:
+                {
                     DialogBoxParamW(pSetupData->hInstance,
                                     MAKEINTRESOURCEW(IDD_BOOTOPTIONS),
                                     hwndDlg,
                                     MoreOptDlgProc,
                                     (LPARAM)pSetupData);
                     break;
+                }
 
                 case IDC_PARTCREATE:
-                    DialogBoxW(pSetupData->hInstance,
-                               MAKEINTRESOURCEW(IDD_PARTITION),
-                               hwndDlg,
-                               PartitionDlgProc);
+                {
+                    DialogBoxParamW(pSetupData->hInstance,
+                                    MAKEINTRESOURCEW(IDD_PARTITION),
+                                    hwndDlg,
+                                    PartitionDlgProc,
+                                    (LPARAM)GetSelectedPartition(GetDlgItem(hwndDlg, IDC_PARTITION), NULL));
                     break;
+                }
 
                 case IDC_PARTDELETE:
                     break;
@@ -802,25 +875,26 @@ DisableWizNext:
                 case PSN_WIZNEXT: /* Set the selected data */
                 {
                     NTSTATUS Status;
+                    PPARTENTRY PartEntry;
 
-                    /****/
-                    // FIXME: This is my test disk encoding!
-                    DISKENTRY DiskEntry;
-                    PARTENTRY PartEntry;
-                    DiskEntry.DiskNumber = 0;
-                    DiskEntry.HwDiskNumber = 0;
-                    DiskEntry.HwFixedDiskNumber = 0;
-                    PartEntry.DiskEntry = &DiskEntry;
-                    PartEntry.PartitionNumber = 1; // 4;
-                    /****/
+                    PartEntry = GetSelectedPartition(GetDlgItem(hwndDlg, IDC_PARTITION), NULL);
+                    if (!PartEntry)
+                    {
+                        /* Fail and don't continue the installation */
+                        SetWindowLongPtrW(hwndDlg, DWLP_MSGRESULT, -1);
+                        return TRUE;
+                    }
 
                     Status = InitDestinationPaths(&pSetupData->USetupData,
                                                   NULL, // pSetupData->USetupData.InstallationDirectory,
-                                                  &PartEntry);
-
+                                                  PartEntry);
                     if (!NT_SUCCESS(Status))
                     {
-                        DPRINT1("InitDestinationPaths() failed with status 0x%08lx\n", Status);
+                        DisplayMessage(GetParent(hwndDlg), MB_ICONERROR, L"Error", L"InitDestinationPaths() failed with status 0x%08lx\n", Status);
+
+                        /* Fail and don't continue the installation */
+                        SetWindowLongPtrW(hwndDlg, DWLP_MSGRESULT, -1);
+                        return TRUE;
                     }
 
                     break;

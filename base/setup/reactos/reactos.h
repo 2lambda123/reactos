@@ -187,6 +187,24 @@ DriveDlgProc(
     WPARAM wParam,
     LPARAM lParam);
 
+
+/* reactos.c */
+
+INT
+DisplayMessage(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uType,
+    _In_opt_ LPCWSTR pszTitle,
+    _In_ LPCWSTR pszFormatMessage,
+    ...);
+
+INT
+DisplayError(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uIDTitle,
+    _In_ UINT uIDMessage);
+
+
 #endif /* _REACTOS_PCH_ */
 
 /* EOP */

@@ -91,10 +91,66 @@ CreateTitleFont(VOID)
     return hFont;
 }
 
-INT DisplayError(
-    IN HWND hParentWnd OPTIONAL,
-    IN UINT uIDTitle,
-    IN UINT uIDMessage)
+INT
+DisplayMessage(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uType,
+    _In_opt_ LPCWSTR pszTitle,
+    _In_ LPCWSTR pszFormatMessage,
+    ...)
+{
+    INT iRes;
+    WCHAR  StaticBuffer[256];
+    LPWSTR Buffer = StaticBuffer; // Use the static buffer by default.
+    LPCWSTR Format = pszFormatMessage;
+    size_t MsgLen;
+    va_list args;
+
+    va_start(args, pszFormatMessage);
+
+    /*
+     * Retrieve the message length and if it is too long, allocate
+     * an auxiliary buffer; otherwise use the static buffer.
+     * The string is built to be NULL-terminated.
+     */
+    MsgLen = _vscwprintf(Format, args);
+    if (MsgLen >= ARRAYSIZE(StaticBuffer))
+    {
+        Buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (MsgLen + 1) * sizeof(WCHAR));
+        if (Buffer == NULL)
+        {
+            /* Allocation failed, use the static buffer and display a suitable error message */
+            // Buffer = StaticBuffer;
+            // Format = L"DisplayMessage()\nOriginal message is too long and allocating an auxiliary buffer failed.";
+            // MsgLen = wcslen(Format);
+            Buffer = (LPWSTR)pszFormatMessage;
+        }
+    }
+
+    if (Buffer != (LPWSTR)pszFormatMessage)
+    {
+        /* Do the printf as we use the caller's format string */
+        ZeroMemory(Buffer, (MsgLen + 1) * sizeof(WCHAR));
+        _vsnwprintf(Buffer, MsgLen, Format, args);
+    }
+
+    va_end(args);
+
+    /* Display the message */
+    iRes = MessageBoxW(hParentWnd, Buffer, pszTitle, uType);
+
+    /* Free the buffer if needed */
+    if (Buffer != StaticBuffer && Buffer != (LPWSTR)pszFormatMessage)
+        HeapFree(GetProcessHeap(), 0, Buffer);
+
+    return iRes;
+}
+
+INT
+DisplayError(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uIDTitle,
+    _In_ UINT uIDMessage)
 {
     WCHAR message[512], caption[64];
 
