@@ -26,10 +26,13 @@
 
 #pragma once
 
-NTSTATUS
-DoFormat(
-    IN PPARTENTRY PartEntry,
-    IN PCWSTR FileSystemName,
-    IN BOOLEAN QuickFormat);
+VOID
+StartFormat(
+    _Inout_ PFORMAT_PARTITION_INFO PartInfo,
+    _In_ PFILE_SYSTEM_ITEM SelectedFileSystem);
+
+VOID
+EndFormat(
+    _In_ NTSTATUS Status);
 
 /* EOF */
