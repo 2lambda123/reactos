@@ -2199,6 +2199,11 @@ MmArmInitSystem(IN ULONG Phase,
             }
         }
 
+#ifdef _WIN64
+        /* We're not poor! */
+        MmNumberOfSystemPtes *= 32;
+#endif
+
         DPRINT("System PTE count has been tuned to %lu (%lu bytes)\n",
                MmNumberOfSystemPtes, MmNumberOfSystemPtes * PAGE_SIZE);
 
