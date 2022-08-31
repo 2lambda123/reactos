@@ -1395,6 +1395,11 @@ ObpCreateUnnamedHandle(IN PVOID Object,
 
     /* Save the access mask */
     NewEntry.GrantedAccess = GrantedAccess;
+    if (NewEntry.ObAttributes & OBJ_PROTECT_CLOSE)
+    {
+        NewEntry.GrantedAccess |= ObpAccessProtectCloseBit;
+        NewEntry.ObAttributes &= ~OBJ_PROTECT_CLOSE;
+    }
 
     /*
      * Create the actual handle. We'll need to do this *after* calling
