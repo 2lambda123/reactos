@@ -326,6 +326,9 @@ MiBuildNonPagedPool(VOID)
         UNIMPLEMENTED;
     }
 
+    // HACK: Double NP pool size
+    MmSizeOfNonPagedPoolInBytes *= 2;
+
     /* Page-align the nonpaged pool size */
     MmSizeOfNonPagedPoolInBytes &= ~(PAGE_SIZE - 1);
 
