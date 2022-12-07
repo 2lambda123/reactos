@@ -369,6 +369,12 @@ typedef struct _MMPFNENTRY
     USHORT ParityError:1;
 } MMPFNENTRY;
 
+#ifdef _WIN64
+#define MI_PFN_BITS 57
+#else
+#define MI_PFN_BITS 25
+#endif
+
 // Mm internal
 typedef struct _MMPFN
 {
@@ -402,6 +408,9 @@ typedef struct _MMPFN
             USHORT ShortFlags;
         } e2;
     } u3;
+#ifdef _WIN64
+    ULONG UsedPageTableEntries;
+#endif
     union
     {
         MMPTE OriginalPte;
@@ -415,7 +424,7 @@ typedef struct _MMPFN
         ULONG_PTR EntireFrame;
         struct
         {
-            ULONG_PTR PteFrame:25;
+            ULONG_PTR PteFrame : MI_PFN_BITS;
             ULONG_PTR InPageError:1;
             ULONG_PTR VerifierAllocation:1;
             ULONG_PTR AweAllocation:1;
