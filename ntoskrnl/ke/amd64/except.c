@@ -93,7 +93,7 @@ KeInitExceptions(VOID)
 }
 
 static
-VOID
+BOOLEAN
 KiDispatchExceptionToUser(
     IN PKTRAP_FRAME TrapFrame,
     IN PCONTEXT Context,
@@ -144,35 +144,35 @@ KiDispatchExceptionToUser(
                  EXCEPTION_EXECUTE_HANDLER)
     {
         // FIXME: handle stack overflow
-
+        //__debugbreak();
         /* Nothing we can do here */
         _disable();
-        _SEH2_YIELD(return);
+        _SEH2_YIELD(return FALSE);
     }
     _SEH2_END;
 
     /* Now set the two params for the user-mode dispatcher */
-    TrapFrame->Rcx = (ULONG64)&UserStack->ExceptionRecord;
-    TrapFrame->Rdx = (ULONG64)&UserStack->Context;
+    Context->Rcx = (ULONG64)&UserStack->ExceptionRecord;
+    Context->Rdx = (ULONG64)&UserStack->Context;
 
     /* Set new Stack Pointer */
-    TrapFrame->Rsp = UserRsp;
+    Context->Rsp = UserRsp;
 
     /* Force correct segments */
-    TrapFrame->SegCs = KGDT64_R3_CODE | RPL_MASK;
-    TrapFrame->SegDs = KGDT64_R3_DATA | RPL_MASK;
-    TrapFrame->SegEs = KGDT64_R3_DATA | RPL_MASK;
-    TrapFrame->SegFs = KGDT64_R3_CMTEB | RPL_MASK;
-    TrapFrame->SegGs = KGDT64_R3_DATA | RPL_MASK;
-    TrapFrame->SegSs = KGDT64_R3_DATA | RPL_MASK;
+    Context->SegCs = KGDT64_R3_CODE | RPL_MASK;
+    Context->SegDs = KGDT64_R3_DATA | RPL_MASK;
+    Context->SegEs = KGDT64_R3_DATA | RPL_MASK;
+    Context->SegFs = KGDT64_R3_CMTEB | RPL_MASK;
+    Context->SegGs = KGDT64_R3_DATA | RPL_MASK;
+    Context->SegSs = KGDT64_R3_DATA | RPL_MASK;
 
     /* Set RIP to the User-mode Dispatcher */
-    TrapFrame->Rip = (ULONG64)KeUserExceptionDispatcher;
+    Context->Rip = (ULONG64)KeUserExceptionDispatcher;
 
     _disable();
 
     /* Exit to usermode */
-    KiServiceExit2(TrapFrame);
+    return TRUE;
 }
 
 static
@@ -361,10 +361,14 @@ KiDispatchException(IN PEXCEPTION_RECORD ExceptionRecord,
             /* Forward exception to user mode debugger */
             if (DbgkForwardException(ExceptionRecord, TRUE, FALSE)) return;
 
-            /* Forward exception to user mode (does not return, if successful) */
-            KiDispatchExceptionToUser(TrapFrame, &Context, ExceptionRecord);
+            /* Forward exception to user mode */
+            if (KiDispatchExceptionToUser(TrapFrame, &Context, ExceptionRecord))
+            {
+                goto Handled;
+            }
 
             /* Failed to dispatch, fall through for second chance handling */
+            //__debugbreak();
         }
 
         /* Try second chance */
@@ -409,6 +413,7 @@ NTAPI
 KeRaiseUserException(IN NTSTATUS ExceptionCode)
 {
     UNIMPLEMENTED;
+    //__debugbreak();
     return STATUS_UNSUCCESSFUL;
 }
 

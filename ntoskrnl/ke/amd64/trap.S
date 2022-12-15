@@ -900,13 +900,20 @@ no_user_apc_pending:
 /*!
  * VOID
  * DECLSPEC_NORETURN
- * KiServiceExit(IN PKTRAP_FRAME TrapFrame, IN NTSTATUS Status));
+ * KiServiceExit(
+ *     _In_ PKTRAP_FRAME TrapFrame@<rcx>,
+ *     _In_ NTSTATUS Status@<edx>);
+ *
+ * Returns from a systemcall to user mode.
+ * Non-volatile registers will not be set.
+ * USed by KiUserModeCallout (x64), NtRaiseException, NtContinue
  */
 PUBLIC KiServiceExit
 .PROC KiServiceExit
     .endprolog
 
     lea rsp, [rcx - MAX_SYSCALL_PARAM_SIZE]
+    mov rax, rdx
     jmp KiSystemServiceExit
 
 .ENDP
@@ -915,7 +922,10 @@ PUBLIC KiServiceExit
 /*!
  * VOID
  * DECLSPEC_NORETURN
- * KiServiceExit2(IN PKTRAP_FRAME TrapFrame);
+ * KiServiceExit2(
+ *     _In_ PKTRAP_FRAME TrapFrame@<rcx>);
+ *
+ * Returns from 
  */
 PUBLIC KiServiceExit2
 .PROC KiServiceExit2
@@ -926,6 +936,11 @@ PUBLIC KiServiceExit2
     mov rsp, rcx
 .ENDP
 
+/*
+ * Internal function. Exits to user-mode with rsp pointing to the trap frame.
+ * All non-volatile register context must be set up already.
+ * Used by KiInitializeContextThread to set up the init path for a new thread.
+ */
 PUBLIC KiServiceExit3
 .PROC KiServiceExit3
     .PUSHFRAME
