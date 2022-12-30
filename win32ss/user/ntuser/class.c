@@ -37,7 +37,7 @@ REGISTER_SYSCLASS DefaultServerClasses[] =
   { ((PWSTR)((ULONG_PTR)(WORD)(0x8001))),
     CS_GLOBALCLASS|CS_DBLCLKS,
     NULL, // Use User32 procs
-    sizeof(ULONG)*2,
+    sizeof(ULONG_PTR)*2,
     (HICON)OCR_NORMAL,
     (HBRUSH)(COLOR_BACKGROUND),
     FNID_DESKTOP,
@@ -46,7 +46,7 @@ REGISTER_SYSCLASS DefaultServerClasses[] =
   { ((PWSTR)((ULONG_PTR)(WORD)(0x8003))),
     CS_VREDRAW|CS_HREDRAW|CS_SAVEBITS,
     NULL, // Use User32 procs
-    sizeof(LONG),
+    sizeof(ULONG_PTR),
     (HICON)OCR_NORMAL,
     NULL,
     FNID_SWITCH,
@@ -55,7 +55,7 @@ REGISTER_SYSCLASS DefaultServerClasses[] =
   { ((PWSTR)((ULONG_PTR)(WORD)(0x8000))),
     CS_DBLCLKS|CS_SAVEBITS|CS_DROPSHADOW,
     NULL, // Use User32 procs
-    sizeof(LONG),
+    sizeof(ULONG_PTR),
     (HICON)OCR_NORMAL,
     (HBRUSH)(COLOR_MENU + 1),
     FNID_MENU,
