@@ -34,6 +34,10 @@ const UCHAR MmSysPteTables[] = { 0, // 1
                                  4, 4, 4, 4, 4, 4, 4, 4 // 16
                                };
 LONG MmSysPteListBySizeCount[5];
+#if 0
+RTL_BITMAP MmSystemPteBitmap[MaximumPtePoolTypes];
+ULONG MmSystemPteBitmapBuffer[93952]; // 93952
+#endif
 
 /* PRIVATE FUNCTIONS **********************************************************/
 
@@ -225,6 +229,11 @@ MiReserveAlignedSystemPtes(IN ULONG NumberOfPtes,
     //
     MmTotalFreeSystemPtes[SystemPtePoolType] -= NumberOfPtes;
 
+#if 0
+    ULONG Start = (ReturnPte - MmSystemPtesStart[SystemPtePoolType]);
+    RtlSetBits(&MmSystemPteBitmap[SystemPtePoolType], Start, NumberOfPtes);
+#endif
+
     //
     // Release the System PTE lock
     //
@@ -285,6 +294,11 @@ MiReleaseSystemPtes(IN PMMPTE StartingPte,
     // Acquire the System PTE lock
     //
     OldIrql = KeAcquireQueuedSpinLock(LockQueueSystemSpaceLock);
+
+#if 0
+    ULONG Start = (StartingPte - MmSystemPtesStart[SystemPtePoolType]);
+    RtlClearBits(&MmSystemPteBitmap[SystemPtePoolType], Start, NumberOfPtes);
+#endif
 
     //
     // Increase availability
@@ -438,6 +452,15 @@ MiInitializeSystemPtes(IN PMMPTE StartingPte,
         //
         MmTotalSystemPtes = NumberOfPtes;
     }
+
+#if 0
+    SIZE_T number = MmSystemPtesEnd[PoolType] - MmSystemPtesStart[PoolType];
+    //SIZE_T size = ((number + 31) / 32) * 4;
+    MmSystemPteBitmap[PoolType].Buffer = MmSystemPteBitmapBuffer; // ExAllocatePoolWithTag(NonPagedPool, size, 'BSmM');
+    ASSERT(MmSystemPteBitmap[PoolType].Buffer != NULL);
+    MmSystemPteBitmap[PoolType].SizeOfBitMap = number;
+    ASSERT(number <= ARRAYSIZE());
+#endif
 }
 
 /* EOF */

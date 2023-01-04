@@ -724,6 +724,9 @@ MmMapLockedPagesSpecifyCache(IN PMDL Mdl,
             //
             if (!BugCheckOnFailure) return NULL;
 
+            __debugbreak();
+            PointerPte = MiReserveSystemPtes(PageCount, SystemPteSpace);
+
             //
             // Yes, crash the system
             //
