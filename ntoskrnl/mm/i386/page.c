@@ -560,7 +560,7 @@ MmCreatePageFileMapping(PEPROCESS Process,
     /* And we don't support creating for other process */
     ASSERT(Process == PsGetCurrentProcess());
 
-    if (SwapEntry & (1 << 31))
+    if (SwapEntry & (1 << (sizeof(PVOID) * 8 - 1)))
     {
         KeBugCheck(MEMORY_MANAGEMENT);
     }
