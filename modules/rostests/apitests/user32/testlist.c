@@ -95,9 +95,7 @@ const struct test winetest_testlist[] =
     { "ScrollBarWndExtra", func_ScrollBarWndExtra },
     { "ScrollDC", func_ScrollDC },
     { "ScrollWindowEx", func_ScrollWindowEx },
-#ifndef _M_AMD64 // random timeout
     { "SendMessageTimeout", func_SendMessageTimeout },
-#endif
     { "SetActiveWindow", func_SetActiveWindow },
     { "SetCursorPos", func_SetCursorPos },
     { "SetFocus", func_SetFocus },
