@@ -356,7 +356,7 @@ KdbSymInit(
         CHAR YesNo;
 
         /* By default, load symbols in DBG builds, but not in REL builds */
-#if DBG
+#if DBG && defined(_M_IX86)
         LoadSymbols = TRUE;
 #else
         LoadSymbols = FALSE;
