@@ -39,8 +39,8 @@ typedef struct _TEST_CONTEXT
         else if (!NT_SUCCESS(Status))                                                                                      \
             ok_eq_pointer(BaseAddress, NULL);                                                                              \
         RegionSize = 0;                                                                                                    \
-        Status = ZwFreeVirtualMemory(ProcessHandle, &BaseAddress, &RegionSize, MEM_RELEASE);                               \
-        if (FreeStatus != IGNORE) ok_eq_hex(Status, FreeStatus);                                                           \
+        Status2 = ZwFreeVirtualMemory(ProcessHandle, &BaseAddress, &RegionSize, MEM_RELEASE);                               \
+        if (FreeStatus != IGNORE) ok_eq_hex(Status2, FreeStatus);                                                           \
         BaseAddress = NULL;                                                                                                \
         RegionSize = DEFAULT_ALLOC_SIZE;                                                                                   \
     } while (0)                                                                                                            \
@@ -67,38 +67,44 @@ CheckBuffer(PVOID Buffer, SIZE_T Size, UCHAR Value)
 
 static
 SIZE_T
-CheckBufferRead(CONST VOID *Source, CONST VOID *Destination, SIZE_T Length, NTSTATUS ExpectedStatus)
+CheckBufferRead_(ULONG Line, CONST VOID *Source, CONST VOID *Destination, SIZE_T Length, NTSTATUS ExpectedStatus)
 {
     SIZE_T Match = 0;
 
     KmtStartSeh()
         Match = RtlCompareMemory(Source, Destination, Length);
-    KmtEndSeh(ExpectedStatus);
+    KmtEndSeh_(Line, ExpectedStatus);
 
     return Match;
 }
 
+#define CheckBufferRead(Source, Destination, Length, ExpectedStatus) \
+    CheckBufferRead_(__LINE__, Source, Destination, Length, ExpectedStatus)
+
 static
 VOID
-CheckBufferReadWrite(PVOID Destination, CONST VOID *Source, SIZE_T Length, NTSTATUS ExpectedStatus)
+CheckBufferReadWrite_(ULONG Line, PVOID Destination, CONST VOID *Source, SIZE_T Length, NTSTATUS ExpectedStatus)
 {
     //do a little bit of writing/reading to memory
     SIZE_T Match = 0;
 
     KmtStartSeh()
         RtlCopyMemory(Destination, Source, Length);
-    KmtEndSeh(ExpectedStatus);
+    KmtEndSeh_(Line, ExpectedStatus);
 
     Match = CheckBufferRead(Source, Destination, Length, ExpectedStatus);
     if (ExpectedStatus == STATUS_SUCCESS) ok_eq_int(Match, Length);
+    if (ExpectedStatus == STATUS_SUCCESS && Match != Length) ok_eq_int(Line, 0);
 }
 
+#define CheckBufferReadWrite(Destination, Source, Length, ExpectedStatus) \
+    CheckBufferReadWrite_(__LINE__, Destination, Source, Length, ExpectedStatus)
 
 static
 VOID
 SimpleErrorChecks(VOID)
 {
-    NTSTATUS Status;
+    NTSTATUS Status, Status2;
     PVOID Base = NULL;
     SIZE_T RegionSize = DEFAULT_ALLOC_SIZE;
 
