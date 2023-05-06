@@ -295,6 +295,7 @@ TestRelativeNames(VOID)
     NTSTATUS Status;
     struct
     {
+        ULONG Line;
         PCWSTR ParentPathTemplate;
         PCWSTR RelativePathTemplate;
         BOOLEAN IsDirectory;
@@ -302,59 +303,59 @@ TestRelativeNames(VOID)
         BOOLEAN IsDrive;
     } Tests[] =
     {
-        { NULL,                         L"C:\\",                            TRUE,   STATUS_SUCCESS, TRUE },
-        { NULL,                         L"C:\\\\",                          TRUE,   STATUS_SUCCESS, TRUE },
-        { NULL,                         L"C:\\\\\\",                        TRUE,   STATUS_OBJECT_NAME_INVALID, TRUE },
-        { NULL,                         L"C:\\ReactOS",                     TRUE,   STATUS_SUCCESS },
-        { NULL,                         L"C:\\ReactOS\\",                   TRUE,   STATUS_SUCCESS },
-        { NULL,                         L"C:\\ReactOS\\\\",                 TRUE,   STATUS_SUCCESS },
-        { NULL,                         L"C:\\ReactOS\\\\\\",               TRUE,   STATUS_OBJECT_NAME_INVALID },
-        { NULL,                         L"C:\\\\ReactOS",                   TRUE,   STATUS_SUCCESS },
-        { NULL,                         L"C:\\\\ReactOS\\",                 TRUE,   STATUS_SUCCESS },
-        { NULL,                         L"C:\\ReactOS\\explorer.exe",       FALSE,  STATUS_SUCCESS },
-        { NULL,                         L"C:\\ReactOS\\\\explorer.exe",     FALSE,  STATUS_OBJECT_NAME_INVALID },
-        { NULL,                         L"C:\\ReactOS\\explorer.exe\\",     FALSE,  STATUS_OBJECT_NAME_INVALID },
-        { NULL,                         L"C:\\ReactOS\\explorer.exe\\file", FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\explorer.exe\\\\",   FALSE,  STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, NULL,                         L"C:\\",                            TRUE,   STATUS_SUCCESS, TRUE },
+        { __LINE__, NULL,                         L"C:\\\\",                          TRUE,   STATUS_SUCCESS, TRUE },
+        { __LINE__, NULL,                         L"C:\\\\\\",                        TRUE,   STATUS_OBJECT_NAME_INVALID, TRUE },
+        { __LINE__, NULL,                         L"C:\\ReactOS",                     TRUE,   STATUS_SUCCESS },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\",                   TRUE,   STATUS_SUCCESS },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\\\",                 TRUE,   STATUS_SUCCESS },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\\\\\",               TRUE,   STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, NULL,                         L"C:\\\\ReactOS",                   TRUE,   STATUS_SUCCESS },
+        { __LINE__, NULL,                         L"C:\\\\ReactOS\\",                 TRUE,   STATUS_SUCCESS },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\explorer.exe",       FALSE,  STATUS_SUCCESS },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\\\explorer.exe",     FALSE,  STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\explorer.exe\\",     FALSE,  STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\explorer.exe\\file", FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\explorer.exe\\\\",   FALSE,  STATUS_OBJECT_NAME_INVALID },
         /* This will never return STATUS_NOT_A_DIRECTORY. IsDirectory=TRUE is a little hacky but achieves that without special handling */
-        { NULL,                         L"C:\\ReactOS\\explorer.exe\\\\\\", TRUE,   STATUS_OBJECT_NAME_INVALID },
-        { L"C:\\",                      L"",                                TRUE,   STATUS_SUCCESS },
-        { L"C:\\",                      L"\\",                              TRUE,   STATUS_OBJECT_NAME_INVALID },
-        { L"C:\\",                      L"ReactOS",                         TRUE,   STATUS_SUCCESS },
-        { L"C:\\",                      L"\\ReactOS",                       TRUE,   STATUS_OBJECT_NAME_INVALID },
-        { L"C:\\",                      L"ReactOS\\",                       TRUE,   STATUS_SUCCESS },
-        { L"C:\\",                      L"\\ReactOS\\",                     TRUE,   STATUS_OBJECT_NAME_INVALID },
-        { L"C:\\ReactOS",               L"",                                TRUE,   STATUS_SUCCESS },
-        { L"C:\\ReactOS",               L"explorer.exe",                    FALSE,  STATUS_SUCCESS },
-        { L"C:\\ReactOS\\explorer.exe", L"",                                FALSE,  STATUS_SUCCESS },
-        { L"C:\\ReactOS\\explorer.exe", L"file",                            FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\explorer.exe\\\\\\", TRUE,   STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, L"C:\\",                      L"",                                TRUE,   STATUS_SUCCESS },
+        { __LINE__, L"C:\\",                      L"\\",                              TRUE,   STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, L"C:\\",                      L"ReactOS",                         TRUE,   STATUS_SUCCESS },
+        { __LINE__, L"C:\\",                      L"\\ReactOS",                       TRUE,   STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, L"C:\\",                      L"ReactOS\\",                       TRUE,   STATUS_SUCCESS },
+        { __LINE__, L"C:\\",                      L"\\ReactOS\\",                     TRUE,   STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, L"C:\\ReactOS",               L"",                                TRUE,   STATUS_SUCCESS },
+        { __LINE__, L"C:\\ReactOS",               L"explorer.exe",                    FALSE,  STATUS_SUCCESS },
+        { __LINE__, L"C:\\ReactOS\\explorer.exe", L"",                                FALSE,  STATUS_SUCCESS },
+        { __LINE__, L"C:\\ReactOS\\explorer.exe", L"file",                            FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
         /* Let's try some nonexistent things */
-        { NULL,                         L"C:\\ReactOS\\IDoNotExist",        FALSE,  STATUS_OBJECT_NAME_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\IDoNotExist\\file",  FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\IDoNotExist\\file?", FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\IDoNotExist\\file\\\\",TRUE,STATUS_OBJECT_PATH_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\IDoNotExist\\file\\\\\\",TRUE,STATUS_OBJECT_PATH_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\AmIInvalid?",        FALSE,  STATUS_OBJECT_NAME_INVALID },
-        { NULL,                         L"C:\\ReactOS\\.",                  TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\..",                 TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\...",                TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\.\\system32",        TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
-        { NULL,                         L"C:\\ReactOS\\..\\ReactOS",        TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
-        { L"C:\\",                      L".",                               TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { L"C:\\",                      L"..",                              TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { L"C:\\",                      L"...",                             TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { L"C:\\",                      L".\\ReactOS",                      TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
-        { L"C:\\",                      L"..\\ReactOS",                     TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
-        { L"C:\\ReactOS",               L".",                               TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { L"C:\\ReactOS",               L"..",                              TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { L"C:\\ReactOS",               L"...",                             TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
-        { L"C:\\ReactOS",               L".\\system32",                     TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
-        { L"C:\\ReactOS",               L"..\\ReactOS",                     TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\IDoNotExist",        FALSE,  STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\IDoNotExist\\file",  FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\IDoNotExist\\file?", FALSE,  STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\IDoNotExist\\file\\\\",TRUE,STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\IDoNotExist\\file\\\\\\",TRUE,STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\AmIInvalid?",        FALSE,  STATUS_OBJECT_NAME_INVALID },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\.",                  TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\..",                 TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\...",                TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\.\\system32",        TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:\\ReactOS\\..\\ReactOS",        TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, L"C:\\",                      L".",                               TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, L"C:\\",                      L"..",                              TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, L"C:\\",                      L"...",                             TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, L"C:\\",                      L".\\ReactOS",                      TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, L"C:\\",                      L"..\\ReactOS",                     TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, L"C:\\ReactOS",               L".",                               TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, L"C:\\ReactOS",               L"..",                              TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, L"C:\\ReactOS",               L"...",                             TRUE,   STATUS_OBJECT_NAME_NOT_FOUND },
+        { __LINE__, L"C:\\ReactOS",               L".\\system32",                     TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, L"C:\\ReactOS",               L"..\\ReactOS",                     TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
         /* Volume open */
-        { NULL,                         L"C:",                              FALSE,  STATUS_SUCCESS, TRUE },
-        { L"C:",                        L"",                                FALSE,  STATUS_SUCCESS, TRUE },
-        { L"C:",                        L"\\",                              TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
-        { L"C:",                        L"file",                            TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, NULL,                         L"C:",                              FALSE,  STATUS_SUCCESS, TRUE },
+        { __LINE__, L"C:",                        L"",                                FALSE,  STATUS_SUCCESS, TRUE },
+        { __LINE__, L"C:",                        L"\\",                              TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
+        { __LINE__, L"C:",                        L"file",                            TRUE,   STATUS_OBJECT_PATH_NOT_FOUND },
     };
     ULONG i;
     OBJECT_ATTRIBUTES ObjectAttributes;
@@ -439,8 +440,8 @@ TestRelativeNames(VOID)
                                 FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                                 0);
             ok(Status == STATUS_SUCCESS,
-               "[%lu] Status = %lx, expected STATUS_SUCCESS\n", i, Status);
-            if (skip(NT_SUCCESS(Status), "No parent handle %lu\n", i))
+               "[%lu] Status = %lx, expected STATUS_SUCCESS\n", Tests[i].Line, Status);
+            if (skip(NT_SUCCESS(Status), "No parent handle %lu\n", Tests[i].Line))
                 continue;
         }
 
@@ -468,7 +469,7 @@ TestRelativeNames(VOID)
                             FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
                             0);
         ok(Status == Tests[i].Status,
-           "[%lu] Status = %lx, expected %lx\n", i, Status, Tests[i].Status);
+           "[%lu] Status = %lx, expected %lx\n", Tests[i].Line, Status, Tests[i].Status);
         if (NT_SUCCESS(Status))
             ObCloseHandle(FileHandle, KernelMode);
 
@@ -481,10 +482,10 @@ TestRelativeNames(VOID)
                             FILE_DIRECTORY_FILE);
         if (Tests[i].IsDirectory || (!TrailingBackslash && !NT_SUCCESS(Tests[i].Status)))
             ok(Status == Tests[i].Status,
-               "[%lu] Status = %lx, expected %lx\n", i, Status, Tests[i].Status);
+               "[%lu] Status = %lx, expected %lx\n", Tests[i].Line, Status, Tests[i].Status);
         else
             ok(Status == STATUS_NOT_A_DIRECTORY,
-               "[%lu] Status = %lx, expected STATUS_NOT_A_DIRECTORY\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_NOT_A_DIRECTORY\n", Tests[i].Line, Status);
         if (NT_SUCCESS(Status))
             ObCloseHandle(FileHandle, KernelMode);
 
@@ -497,10 +498,10 @@ TestRelativeNames(VOID)
                             FILE_NON_DIRECTORY_FILE);
         if (Tests[i].IsDirectory && NT_SUCCESS(Tests[i].Status))
             ok(Status == STATUS_FILE_IS_A_DIRECTORY,
-               "[%lu] Status = %lx, expected STATUS_FILE_IS_A_DIRECTORY\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_FILE_IS_A_DIRECTORY\n", Tests[i].Line, Status);
         else
             ok(Status == Tests[i].Status,
-               "[%lu] Status = %lx, expected %lx\n", i, Status, Tests[i].Status);
+               "[%lu] Status = %lx, expected %lx\n", Tests[i].Line, Status, Tests[i].Status);
         if (NT_SUCCESS(Status))
             ObCloseHandle(FileHandle, KernelMode);
 
@@ -513,10 +514,10 @@ TestRelativeNames(VOID)
                             FILE_DIRECTORY_FILE | FILE_NON_DIRECTORY_FILE);
         if (Tests[i].Status == STATUS_OBJECT_NAME_INVALID && Tests[i].IsDrive)
             ok(Status == STATUS_OBJECT_NAME_INVALID,
-               "[%lu] Status = %lx, expected STATUS_OBJECT_NAME_INVALID\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_OBJECT_NAME_INVALID\n", Tests[i].Line, Status);
         else
             ok(Status == STATUS_INVALID_PARAMETER,
-               "[%lu] Status = %lx, expected STATUS_INVALID_PARAMETER\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_INVALID_PARAMETER\n", Tests[i].Line, Status);
         if (NT_SUCCESS(Status))
             ObCloseHandle(FileHandle, KernelMode);
 
@@ -535,19 +536,19 @@ TestRelativeNames(VOID)
                               0);
         if (Tests[i].Status == STATUS_OBJECT_NAME_NOT_FOUND)
             ok(Status == STATUS_SUCCESS,
-               "[%lu] Status = %lx, expected STATUS_SUCCESS\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_SUCCESS\n", Tests[i].Line, Status);
         else if (Tests[i].Status == STATUS_OBJECT_NAME_INVALID && Tests[i].IsDrive)
             ok(Status == STATUS_OBJECT_NAME_INVALID,
-               "[%lu] Status = %lx, expected STATUS_OBJECT_NAME_INVALID\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_OBJECT_NAME_INVALID\n", Tests[i].Line, Status);
         else if (Tests[i].IsDrive)
             ok(Status == STATUS_ACCESS_DENIED,
-               "[%lu] Status = %lx, expected STATUS_ACCESS_DENIED\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_ACCESS_DENIED\n", Tests[i].Line, Status);
         else if (Tests[i].Status == STATUS_SUCCESS)
             ok(Status == STATUS_OBJECT_NAME_COLLISION,
-               "[%lu] Status = %lx, expected STATUS_OBJECT_NAME_COLLISION\n", i, Status);
+               "[%lu] Status = %lx, expected STATUS_OBJECT_NAME_COLLISION\n", Tests[i].Line, Status);
         else
             ok(Status == Tests[i].Status,
-               "[%lu] Status = %lx, expected %lx; %ls -- %ls\n", i, Status, Tests[i].Status, Tests[i].ParentPathTemplate, Tests[i].RelativePathTemplate);
+               "[%lu] Status = %lx, expected %lx; %ls -- %ls\n", Tests[i].Line, Status, Tests[i].Status, Tests[i].ParentPathTemplate, Tests[i].RelativePathTemplate);
         if (NT_SUCCESS(Status))
         {
             if (IoStatus.Information == FILE_CREATED)
@@ -559,7 +560,7 @@ TestRelativeNames(VOID)
                                               sizeof(DispositionInfo),
                                               FileDispositionInformation);
                 ok(Status == STATUS_SUCCESS,
-                   "[%lu] Status = %lx, expected STATUS_SUCCESS\n", i, Status);
+                   "[%lu] Status = %lx, expected STATUS_SUCCESS\n", Tests[i].Line, Status);
             }
             ObCloseHandle(FileHandle, KernelMode);
         }
