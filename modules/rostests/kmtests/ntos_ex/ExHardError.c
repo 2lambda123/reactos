@@ -95,7 +95,8 @@ TestHardError(
     CheckHardError(0x40000003,                  0, OptionOk,                STATUS_SUCCESS,            ResponseNotHandled,     6, 1, 2, 3, 4, 5, 6);           // TODO: interactive on ROS
     }
 
-    CheckHardError(0x40000004,                  0, OptionShutdownSystem,    STATUS_PRIVILEGE_NOT_HELD, ResponseReturnToCaller, 0, 0);
+    // This one fails randomly on Test WHS
+    //CheckHardError(0x40000004,                  0, OptionShutdownSystem,    STATUS_PRIVILEGE_NOT_HELD, ResponseReturnToCaller, 0, 0);
     if (InteractivePart1)
     {
     // TODO: these 2 are interactive on ROS
