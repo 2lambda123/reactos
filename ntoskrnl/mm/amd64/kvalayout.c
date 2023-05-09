@@ -208,8 +208,8 @@ SetupVaRegions(
     /* Reserve 128 GB for paged pool */
     RandomizeVaRegion(AssignedRegionPagedPool, 128 * _1GB, PDE_MAPPED_VA);
 
-    /* Reserve 32 GB for system PTEs (this is the limit of the implementation) */
-    RandomizeVaRegion(AssignedRegionSystemPtes, 32 * _1GB, PDE_MAPPED_VA);
+    /* Reserve 128 GB for system PTEs */
+    RandomizeVaRegion(AssignedRegionSystemPtes, 128 * _1GB, PDE_MAPPED_VA);
 
     /* Reserve 128 GB for kernel stacks */
     RandomizeVaRegion(AssignedRegionKernelStacks, 128 * _1GB, PDE_MAPPED_VA);
