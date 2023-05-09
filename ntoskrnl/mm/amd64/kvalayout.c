@@ -194,9 +194,6 @@ SetupVaRegions(
                     MI_LOADER_MAPPINGS,
                     BootImageSize + PAGE_SIZE);
 
-    /* Reserve 128 GB for system PTEs */
-    ReserveVaRegion(AssignedRegionSystemPtes, MM_SYSTEM_SPACE_START, 128 * _1GB);
-
     /* Reserve up to 8 TB for the PFN database */
     PFN_NUMBER HighestPfn = FindHighestPfnNumber(LoaderBlock);
     ULONG64 PfnDbSize = HighestPfn * sizeof(MMPFN) + _1MB;
@@ -210,6 +207,9 @@ SetupVaRegions(
 
     /* Reserve 128 GB for paged pool */
     RandomizeVaRegion(AssignedRegionPagedPool, 128 * _1GB, PDE_MAPPED_VA);
+
+    /* Reserve 32 GB for system PTEs (this is the limit of the implementation) */
+    RandomizeVaRegion(AssignedRegionSystemPtes, 32 * _1GB, PDE_MAPPED_VA);
 
     /* Reserve 128 GB for kernel stacks */
     RandomizeVaRegion(AssignedRegionKernelStacks, 128 * _1GB, PDE_MAPPED_VA);

@@ -15,7 +15,6 @@
 #define HYPER_SPACE_END                        0xFFFFF77FFFFFFFFFULL
 //#define MI_SHARED_SYSTEM_PAGE                0xFFFFF78000000000ULL
 #define MI_LOADER_MAPPINGS                     0xFFFFF80000000000ULL // 512 GB loader mappings aka KSEG0_BASE (NDK) [MiVaBootLoaded]
-#define MM_SYSTEM_SPACE_START                  0xFFFFF88000000000ULL // 128 GB system PTEs [MiVaSystemPtes]
 #define MI_SESSION_SPACE_START                 0xFFFFF90000000000ULL // 512 GB session space [MiVaSessionSpace]
 //#define MI_SESSION_VIEW_END                    0xFFFFF97FFF000000ULL
 #define MI_SESSION_SPACE_END                   0xFFFFF98000000000ULL
@@ -39,11 +38,13 @@
 #define PPE_MAPPED_VA (PDE_PER_PAGE * (ULONG64)PDE_MAPPED_VA)
 #define PXE_MAPPED_VA (PPE_PER_PAGE * (ULONG64)PPE_MAPPED_VA)
 
+extern PVOID MiSystemPteSpaceStart;
+
 /* Misc address definitions */
 //#define MI_NON_PAGED_SYSTEM_START_MIN   MM_SYSTEM_SPACE_START // FIXME
 //#define MI_SYSTEM_PTE_START             MM_SYSTEM_SPACE_START
 //#define MI_SYSTEM_PTE_END               (MI_SYSTEM_PTE_START + MI_NUMBER_SYSTEM_PTES * PAGE_SIZE - 1)
-#define MI_SYSTEM_PTE_BASE              (PVOID)MiAddressToPte(KSEG0_BASE)
+#define MI_SYSTEM_PTE_BASE              (PVOID)MiAddressToPte(MiSystemPteSpaceStart)
 #define MM_HIGHEST_VAD_ADDRESS          (PVOID)((ULONG_PTR)MM_HIGHEST_USER_ADDRESS - (16 * PAGE_SIZE))
 #define MI_MAPPING_RANGE_START          HYPER_SPACE
 #define MI_MAPPING_RANGE_END            (MI_MAPPING_RANGE_START + MI_HYPERSPACE_PTES * PAGE_SIZE)
