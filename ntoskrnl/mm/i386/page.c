@@ -585,6 +585,9 @@ MmCreatePageFileMapping(PEPROCESS Process,
     return STATUS_SUCCESS;
 }
 
+VOID
+MiMakeKernelPageTableValid(
+    _In_ PVOID Address);
 
 NTSTATUS
 NTAPI
@@ -625,6 +628,12 @@ MmCreateVirtualMappingUnsafe(PEPROCESS Process,
         if (!MiSynchronizeSystemPde(MiAddressToPde(Address)))
             MiFillSystemPageDirectory(Address, PAGE_SIZE);
 #endif
+
+        /* Lock the system cache WS */
+        MiLockWorkingSet(PsGetCurrentThread(), &MmSystemCacheWs);
+
+        /* Make the page table valid */
+        MiMakeKernelPageTableValid(Address);
     }
     else
     {
@@ -662,6 +671,10 @@ MmCreateVirtualMappingUnsafe(PEPROCESS Process,
         /* Add PDE reference */
         MiIncrementPageTableReferences(Address);
         MiUnlockProcessWorkingSetUnsafe(Process, PsGetCurrentThread());
+    }
+    else
+    {
+        MiUnlockWorkingSet(PsGetCurrentThread(), &MmSystemCacheWs);
     }
 
     return(STATUS_SUCCESS);
