@@ -413,7 +413,7 @@ MiBuildSystemPteSpace(VOID)
     /* Map the PPEs and PDEs for the system PTEs */
     MiMapPPEs(MiSystemPteSpaceStart, MiSystemPteSpaceEnd);
     MiMapPDEs(MiSystemPteSpaceStart, MiSystemPteSpaceEnd);
-
+    //__debugbreak();
     /* Initialize the system PTE space */
     PointerPte = MiAddressToPte(MiSystemPteSpaceStart);
     MiInitializeSystemPtes(PointerPte, MmNumberOfSystemPtes, SystemPteSpace);

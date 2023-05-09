@@ -221,7 +221,7 @@ MmDeleteKernelStack(IN PVOID StackBase,
 
     /* Acquire the PFN lock */
     OldIrql = MiAcquirePfnLock();
-
+    //__debugbreak();
     //
     // Loop them
     //
@@ -235,6 +235,7 @@ MmDeleteKernelStack(IN PVOID StackBase,
             /* Get the PTE's page */
             PageFrameNumber = PFN_FROM_PTE(PointerPte);
             Pfn1 = MiGetPfnEntry(PageFrameNumber);
+            if (Pfn1->u3.e1.PageLocation != ActiveAndValid) __debugbreak();
 
             /* Now get the page of the page table mapping it */
             PageTableFrameNumber = Pfn1->u4.PteFrame;
@@ -328,6 +329,8 @@ MmCreateKernelStack(IN BOOLEAN GuiStack,
     // Get the stack address
     //
     BaseAddress = MiPteToAddress(StackPte + StackPtes + 1);
+
+    DbgPrint("## CREATE BaseAddress %p, PTE %p, PDE %p\n", BaseAddress, StackPte, MiAddressToPte(StackPte));;
 
     //
     // Select the right PTE address where we actually start committing pages

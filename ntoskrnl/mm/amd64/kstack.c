@@ -42,6 +42,8 @@ MapPageTable(PMMPTE PointerPte)
     }
     DbgPrint("## MAP %p PFN 0x%lx\n", PointerPte, PageFrameNumber);
     MiInitializePfn(PageFrameNumber, PointerPte, TRUE);
+    PMMPFN Pfn = MiGetPfnEntry(PageFrameNumber);
+    Pfn->Dbg1.IsStackPfn = 1;
 
     MiReleasePfnLock(OldIrql);
 
