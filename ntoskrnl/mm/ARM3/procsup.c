@@ -237,7 +237,7 @@ MmDeleteKernelStack(IN PVOID StackBase,
             Pfn1 = MiGetPfnEntry(PageFrameNumber);
             if (Pfn1->u3.e1.PageLocation != ActiveAndValid) __debugbreak();
 
-            PointerPte->u.Long = 0;
+            //PointerPte->u.Long = 0;
 
             /* Now get the page of the page table mapping it */
             PageTableFrameNumber = Pfn1->u4.PteFrame;

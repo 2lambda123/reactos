@@ -189,10 +189,8 @@ MiReleaseKernelStackPtes(
     ASSERT(NumberOfPtes <= MI_STACK_PAGES);
     ASSERT(IS_ALIGNED(MiPteToAddress(FirstPte), MI_STACK_SIZE));
 
-    for (ULONG i = 0; i < MI_STACK_PAGES; i++)
-    {
-        if (FirstPte[i].u.Hard.Valid) __debugbreak();
-    }
+    /* Zero the PTEs */
+    RtlZeroMemory(FirstPte, MI_STACK_PAGES * sizeof(MMPTE));
 
     KeAcquireSpinLock(&MiStackPteSpinLock, &OldIrql);
 

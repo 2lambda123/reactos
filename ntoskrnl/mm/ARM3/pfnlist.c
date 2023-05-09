@@ -1144,7 +1144,7 @@ MiDecrementShareCount(IN PMMPFN Pfn1,
 
     DPRINT("Decrementing %p from %p\n", Pfn1, _ReturnAddress());
 
-    if (Pfn1->Dbg1.IsStackPfn) __debugbreak();
+    //if (Pfn1->Dbg1.IsStackPfn) __debugbreak();
 
     /* Page must be in-use */
     if ((Pfn1->u3.e1.PageLocation != ActiveAndValid) &&
