@@ -175,7 +175,7 @@ MiReserveKernelStackPtes(
 
     KeReleaseSpinLock(&MiStackPteSpinLock, OldIrql);
 
-    //return PointerPte;
+    return PointerPte;
     PMMPTE PointerPte2 = MiReserveSystemPtes(NumberOfPtes + 1, SystemPteSpace);
     PointerPte2->u.List.NextEntry = PointerPte - MiStackPteBaseByLevel[0];
     return PointerPte2 + 1;
@@ -183,13 +183,13 @@ MiReserveKernelStackPtes(
 
 VOID
 MiReleaseKernelStackPtes(
-    _In_ PMMPTE FirstPte2,
+    _In_ PMMPTE FirstPte,
     _In_ ULONG NumberOfPtes)
 {
     PMMPTE PointerPte;
     KIRQL OldIrql;
 
-    PMMPTE FirstPte = MiStackPteBaseByLevel[0] + FirstPte2[-1].u.List.NextEntry;
+    //PMMPTE FirstPte = MiStackPteBaseByLevel[0] + FirstPte2[-1].u.List.NextEntry;
 
     ASSERT(NumberOfPtes <= MI_STACK_PAGES);
     ASSERT(IS_ALIGNED(MiPteToAddress(FirstPte), MI_STACK_SIZE));
@@ -218,5 +218,5 @@ MiReleaseKernelStackPtes(
 
     KeReleaseSpinLock(&MiStackPteSpinLock, OldIrql);
 
-    MiReleaseSystemPtes(FirstPte2 - 1, NumberOfPtes + 1, SystemPteSpace);
+    //MiReleaseSystemPtes(FirstPte2 - 1, NumberOfPtes + 1, SystemPteSpace);
 }
