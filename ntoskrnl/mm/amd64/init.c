@@ -745,6 +745,8 @@ MiInitMachineDependent(IN PLOADER_PARAMETER_BLOCK LoaderBlock)
 
     MiBuildSystemPteSpace();
 
+    MiInitializeStackAllocator();
+
     /* Map the PFN database pages */
     MiBuildPfnDatabase(LoaderBlock);
 

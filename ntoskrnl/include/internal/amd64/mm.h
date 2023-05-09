@@ -409,3 +409,16 @@ VOID
 NTAPI
 MiInitializeKernelVaLayout(
     _In_ const LOADER_PARAMETER_BLOCK* LoaderBlock);
+
+VOID
+MiInitializeStackAllocator(
+    VOID);
+
+PMMPTE
+MiReserveKernelStackPtes(
+    _In_ ULONG NumberOfPtes);
+
+VOID
+MiReleaseKernelStackPtes(
+    _In_ PMMPTE FirstPte,
+    _In_ ULONG NumberOfPtes);
