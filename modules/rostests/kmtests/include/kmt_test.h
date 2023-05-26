@@ -290,10 +290,10 @@ VOID KmtFreeGuarded(PVOID Pointer);
     }                                               \
     _SEH2_END;                                      \
     KmtOk((ExceptionStatus) == (ExpectedStatus),    \
-        __FILE__ ":" #Line ":",                     \
-        "ExceptionStatus = 0x%08lx, expected "      \
+        __FILE__ ":",                               \
+        "%lu: ExceptionStatus = 0x%08lx, expected " \
         #ExpectedStatus " (0x%08lx)\n",             \
-        ExceptionStatus, ExpectedStatus);           \
+        Line, ExceptionStatus, ExpectedStatus);     \
 }
 
 #define KmtEndSeh(ExpectedStatus) KmtEndSeh_(__LINE__, ExpectedStatus)
