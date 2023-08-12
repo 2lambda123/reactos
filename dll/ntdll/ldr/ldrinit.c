@@ -2401,6 +2401,9 @@ LdrpInitializeProcess(IN PCONTEXT Context,
     /* Check whether all static imports were properly loaded and return here */
     if (!NT_SUCCESS(ImportStatus)) return ImportStatus;
 
+    /* Initialize the keyed event for condition variables */
+    RtlpInitializeKeyedEvent();
+
     /* Initialize TLS */
     Status = LdrpInitializeTls();
     if (!NT_SUCCESS(Status))
