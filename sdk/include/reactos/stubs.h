@@ -23,6 +23,10 @@ DbgPrint(
     ...
 );
 
+#ifdef _M_AMD64
+#define __wine_spec_unimplemented_stub(module, function) \
+    DbgPrint("WARNING: calling stub %s in module %s\n", function, module);
+#else
 #define __wine_spec_unimplemented_stub(module, function) \
 { \
     EXCEPTION_RECORD ExceptionRecord = {0}; \
@@ -34,3 +38,4 @@ DbgPrint(
     ExceptionRecord.NumberParameters = 2; \
     RtlRaiseException(&ExceptionRecord); \
 }
+#endif
