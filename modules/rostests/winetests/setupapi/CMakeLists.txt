@@ -1,4 +1,9 @@
 
+spec2def(coinst.dll coinst.spec)
+add_library(coinst MODULE coinst.c ${CMAKE_CURRENT_BINARY_DIR}/coinst.def)
+set_module_type(coinst win32dll)
+add_importlibs(coinst msvcrt kernel32)
+
 list(APPEND SOURCE
     devinst.c
     diskspace.c
@@ -9,6 +14,8 @@ list(APPEND SOURCE
     setupcab.c
     stringtable.c
     testlist.c)
+
+set_property(SOURCE setupapi.rc PROPERTY OBJECT_DEPENDS ${CMAKE_CURRENT_BINARY_DIR}/coinst.dll)
 
 add_executable(setupapi_winetest ${SOURCE} setupapi.rc)
 set_module_type(setupapi_winetest win32cui)
