@@ -1,0 +1,120 @@
+diff --git a/dll/win32/setupapi/diskspace.c b/dll/win32/setupapi/diskspace.c
+index c789fcd5958..dd1383ee31b 100644
+--- a/dll/win32/setupapi/diskspace.c
++++ b/dll/win32/setupapi/diskspace.c
+@@ -281,16 +281,95 @@ BOOL WINAPI SetupAddSectionToDiskSpaceListA(HDSKSPC diskspace, HINF hinf, HINF h
+ }
+ 
+ /***********************************************************************
+- *		SetupAddInstallSectionToDiskSpaceListA  (SETUPAPI.@)
++ *      SetupAddInstallSectionToDiskSpaceListW  (SETUPAPI.@)
+  */
+-BOOL WINAPI SetupAddInstallSectionToDiskSpaceListA(HDSKSPC DiskSpace,
+-                        HINF InfHandle, HINF LayoutInfHandle,
+-                        LPCSTR SectionName, PVOID Reserved1, UINT Reserved2)
++BOOL WINAPI SetupAddInstallSectionToDiskSpaceListW(HDSKSPC diskspace,
++                        HINF inf, HINF layoutinf, LPCWSTR section,
++                        PVOID reserved1, UINT reserved2)
+ {
+-    FIXME ("Stub\n");
++    static const WCHAR CopyFiles[]  = {'C','o','p','y','F','i','l','e','s',0};
++    static const WCHAR DelFiles[]   = {'D','e','l','F','i','l','e','s',0};
++    WCHAR section_name[MAX_PATH];
++    INFCONTEXT context;
++    BOOL ret;
++    int i;
++
++    TRACE("(%p, %p, %p, %s, %p, %u)\n", diskspace, inf, layoutinf, debugstr_w(section),
++                                        reserved1, reserved2);
++
++    if (!diskspace)
++    {
++        SetLastError(ERROR_INVALID_HANDLE);
++        return FALSE;
++    }
++
++    if (!section)
++    {
++        SetLastError(ERROR_INVALID_PARAMETER);
++        return FALSE;
++    }
++
++    if (!inf) return TRUE;
++    if (!layoutinf) layoutinf = inf;
++
++    ret = SetupFindFirstLineW(inf, section, CopyFiles, &context);
++    while (ret)
++    {
++        for (i = 1;; i++)
++        {
++            if (!SetupGetStringFieldW(&context, i, section_name, sizeof(section_name) / sizeof(WCHAR), NULL))
++                break;
++            SetupAddSectionToDiskSpaceListW(diskspace, layoutinf, inf, section_name, FILEOP_COPY, 0, 0);
++        }
++        ret = SetupFindNextLine(&context, &context);
++    }
++
++    ret = SetupFindFirstLineW(inf, section, DelFiles, &context);
++    while (ret)
++    {
++        for (i = 1;; i++)
++        {
++            if (!SetupGetStringFieldW(&context, i, section_name, sizeof(section_name) / sizeof(WCHAR), NULL))
++                break;
++            SetupAddSectionToDiskSpaceListW(diskspace, layoutinf, inf, section_name, FILEOP_DELETE, 0, 0);
++        }
++        ret = SetupFindNextLine(&context, &context);
++    }
++
+     return TRUE;
+ }
+ 
++/***********************************************************************
++ *      SetupAddInstallSectionToDiskSpaceListA  (SETUPAPI.@)
++ */
++BOOL WINAPI SetupAddInstallSectionToDiskSpaceListA(HDSKSPC diskspace,
++                        HINF inf, HINF layoutinf, LPCSTR section,
++                        PVOID reserved1, UINT reserved2)
++{
++    LPWSTR sectionW = NULL;
++    DWORD len;
++    BOOL ret;
++
++    if (section)
++    {
++        len = MultiByteToWideChar(CP_ACP, 0, section, -1, NULL, 0);
++
++        sectionW = HeapAlloc(GetProcessHeap(), 0, len * sizeof(WCHAR));
++        if (!sectionW)
++        {
++            SetLastError(ERROR_NOT_ENOUGH_MEMORY);
++            return FALSE;
++        }
++
++        MultiByteToWideChar(CP_ACP, 0, section, -1, sectionW, len);
++    }
++
++    ret = SetupAddInstallSectionToDiskSpaceListW(diskspace, inf, layoutinf,
++                                                 sectionW, reserved1, reserved2);
++    if (sectionW) HeapFree(GetProcessHeap(), 0, sectionW);
++    return ret;
++}
++
+ /***********************************************************************
+ *		SetupQuerySpaceRequiredOnDriveW  (SETUPAPI.@)
+ */
+diff --git a/dll/win32/setupapi/setupapi.spec b/dll/win32/setupapi/setupapi.spec
+index 8cbff6e1632..2f0efd1d8df 100644
+--- a/dll/win32/setupapi/setupapi.spec
++++ b/dll/win32/setupapi/setupapi.spec
+@@ -216,8 +216,8 @@
+ @ stdcall MyFree(ptr)
+ @ stdcall MyMalloc(long)
+ @ stdcall MyRealloc(ptr long)
+-@ stdcall SetupAddInstallSectionToDiskSpaceListA(long long long str ptr long)
+-@ stub SetupAddInstallSectionToDiskSpaceListW
++@ stdcall SetupAddInstallSectionToDiskSpaceListA(ptr ptr ptr str ptr long)
++@ stdcall SetupAddInstallSectionToDiskSpaceListW(ptr ptr ptr wstr ptr long)
+ @ stdcall SetupAddSectionToDiskSpaceListA(ptr ptr ptr str long ptr long)
+ @ stdcall SetupAddSectionToDiskSpaceListW(ptr ptr ptr wstr long ptr long)
+ @ stdcall SetupAddToDiskSpaceListA(long str int64 long ptr long)
