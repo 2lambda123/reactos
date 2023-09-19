@@ -8,6 +8,15 @@ int
 CDECL
 _memicmp(const void *s1, const void *s2, size_t n)
 {
+#if (DLL_EXPORT_VERSION >= 0x600)
+    if (!s1 || !s2)
+    {
+        if (n)
+            MSVCRT_INVALID_PMT(NULL, EINVAL);
+        return n ? _NLSCMPERROR : 0;
+    }
+#endif
+
   if (n != 0)
   {
     const unsigned char *p1 = s1, *p2 = s2;
