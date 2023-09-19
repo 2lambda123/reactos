@@ -542,15 +542,16 @@ co_IntUpdateWindows(PWND Wnd, ULONG Flags, BOOL Recurse)
       Wnd->state &= ~WNDS_UPDATEDIRTY;
 
       Wnd->state2 |= WNDS2_WMPAINTSENT;
+
+      USER_REFERENCE_ENTRY Ref;
+      UserRefObjectCo(Wnd, &Ref);
       co_IntSendMessage(hWnd, WM_PAINT, 0, 0);
 
       if (Wnd->state & WNDS_PAINTNOTPROCESSED)
       {
-         USER_REFERENCE_ENTRY Ref;
-         UserRefObjectCo(Wnd, &Ref);
          co_IntPaintWindows(Wnd, RDW_NOCHILDREN, FALSE);
-         UserDerefObjectCo(Wnd);
       }
+      UserDerefObjectCo(Wnd);
    }
 
    // Force flags as a toggle. Fixes msg:test_paint_messages:WmChildPaintNc.
