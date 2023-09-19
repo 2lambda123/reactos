@@ -834,7 +834,17 @@ IntFixUpDevModeNames( PDOCUMENTPROPERTYHEADER pdphdr )
 
     if (res)
     {
-        FIXME("IFUDMN : Get Printer Name %S\n",pi2->pPrinterName);
+        /* Check if the provided buffer is large enough */
+        WORD cbDevMode = pi2->pDevMode->dmSize + pi2->pDevMode->dmDriverExtra;
+        if (pdphdr->cbOut < cbDevMode)
+        {
+            res = 0;
+        }
+
+        /* Copy the devmode */
+        RtlCopyMemory(pdphdr->pdmOut, pi2->pDevMode, cbDevMode);
+
+        FIXME("IFUDMN : Get Printer Name %S\n", pi2->pPrinterName);
         StringCchCopyW( pdphdr->pdmOut->dmDeviceName, CCHDEVICENAME-1, pi2->pPrinterName );
         pdphdr->pdmOut->dmDeviceName[CCHDEVICENAME-1] = 0;
     }
