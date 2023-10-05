@@ -33,6 +33,8 @@
 
 #include "wine/test.h"
 
+#include <setupapi_undoc.h> // TEMP HACKFIX, to be reverted once setupapi_winetest sync is in place!
+
 static CHAR CURR_DIR[MAX_PATH];
 
 /* test:
