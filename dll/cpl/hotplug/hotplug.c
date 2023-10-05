@@ -7,6 +7,7 @@
 */
 
 #include "hotplug.h"
+#include <setupapi_undoc.h>
 
 #include <initguid.h>
 #include <devguid.h>

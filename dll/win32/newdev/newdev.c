@@ -21,6 +21,7 @@
  */
 
 #include "newdev_private.h"
+#include <setupapi_undoc.h>
 
 #include <stdio.h>
 #include <winnls.h>
