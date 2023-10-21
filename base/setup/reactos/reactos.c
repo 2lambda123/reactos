@@ -1956,6 +1956,8 @@ _tWinMain(HINSTANCE hInst,
     PROPSHEETPAGE psp = {0};
     UINT nPages = 0;
 
+__debugbreak();
+
     ProcessHeap = GetProcessHeap();
 
     SetupData.hInstance = hInst;
