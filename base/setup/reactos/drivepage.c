@@ -27,6 +27,8 @@
 #include "reactos.h"
 #include <shlwapi.h>
 
+#include <math.h> // For pow()
+
 // #include <ntdddisk.h>
 #include <ntddstor.h>
 #include <ntddscsi.h>
@@ -62,7 +64,7 @@ MoreOptDlgProc(HWND hwndDlg,
         {
             /* Save pointer to the global setup data */
             pSetupData = (PSETUPDATA)lParam;
-            SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (DWORD_PTR)pSetupData);
+            SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (LONG_PTR)pSetupData);
 
             CheckDlgButton(hwndDlg, IDC_INSTFREELDR, BST_CHECKED);
             SetDlgItemTextW(hwndDlg, IDC_PATH,
@@ -92,57 +94,201 @@ MoreOptDlgProc(HWND hwndDlg,
     return FALSE;
 }
 
-static INT_PTR CALLBACK
-PartitionDlgProc(HWND hwndDlg,
-                 UINT uMsg,
-                 WPARAM wParam,
-                 LPARAM lParam)
-{
-    PPARTENTRY PartEntry;
 
-    /* Retrieve the selected partition */
-    PartEntry = (PPARTENTRY)GetWindowLongPtrW(hwndDlg, GWLP_USERDATA);
+#define PARTITION_SIZE_INPUT_FIELD_LENGTH 9
+/* Restriction for MaxSize */
+#define PARTITION_MAXSIZE (pow(10, (PARTITION_SIZE_INPUT_FIELD_LENGTH - 1)) - 1)
+
+typedef struct _PARTCREATE_CTX
+{
+    // PSETUPDATA pSetupData;
+    PPARTLIST PartitionList;
+    PPARTENTRY PartEntry;
+    ULONG MaxSize;
+} PARTCREATE_CTX, *PPARTCREATE_CTX;
+
+static INT_PTR
+CALLBACK
+PartitionDlgProc(
+    _In_ HWND hDlg,
+    _In_ UINT uMsg,
+    _In_ WPARAM wParam,
+    _In_ LPARAM lParam)
+{
+    PPARTCREATE_CTX PartCreateCtx;
+
+    /* Retrieve dialog context pointer */
+    PartCreateCtx = (PPARTCREATE_CTX)GetWindowLongPtrW(hDlg, GWLP_USERDATA);
 
     switch (uMsg)
     {
         case WM_INITDIALOG:
         {
+            PPARTENTRY PartEntry;
+            PDISKENTRY DiskEntry;
             ULONG Index = 0;
             PCWSTR FileSystemName;
             INT nSel;
+            PCWSTR DefaultFs;
+            ULONG MaxSize;
 
-            /* Save pointer to the global setup data */
-            PartEntry = (PPARTENTRY)lParam;
-            SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (DWORD_PTR)PartEntry);
+            /* Save dialog context pointer */
+            PartCreateCtx = (PPARTCREATE_CTX)lParam;
+            SetWindowLongPtrW(hDlg, GWLP_USERDATA, (LONG_PTR)PartCreateCtx);
+
+            /* Retrieve the selected partition */
+            PartEntry = PartCreateCtx->PartEntry;
+            DiskEntry = PartEntry->DiskEntry;
 
             /* List the well-known filesystems */
             while (GetRegisteredFileSystems(Index++, &FileSystemName))
             {
                 // ComboBox_InsertString()
-                SendDlgItemMessageW(hwndDlg, IDC_FSTYPE, CB_INSERTSTRING, -1, (LPARAM)FileSystemName);
+                SendDlgItemMessageW(hDlg, IDC_FSTYPE, CB_INSERTSTRING, -1, (LPARAM)FileSystemName);
             }
 
-            // FIXME: Use "DefaultFs"
-            nSel = SendDlgItemMessageW(hwndDlg, IDC_FSTYPE, CB_FINDSTRINGEXACT, 0, (LPARAM)PartEntry->FileSystem);
+#if 0
+            // FIXME: Use "DefaultFs"?
+            nSel = SendDlgItemMessageW(hDlg, IDC_FSTYPE, CB_FINDSTRINGEXACT, 0, (LPARAM)PartEntry->FileSystem);
+#else
+            /* By default select the "FAT" file system */
+            DefaultFs = L"FAT";
+            nSel = SendDlgItemMessageW(hDlg, IDC_FSTYPE, CB_FINDSTRINGEXACT, 0, (LPARAM)DefaultFs);
+#endif
             if (nSel == CB_ERR)
                 nSel = 0;
-            SendDlgItemMessageW(hwndDlg, IDC_FSTYPE, CB_SETCURSEL, (WPARAM)nSel, 0);
+            SendDlgItemMessageW(hDlg, IDC_FSTYPE, CB_SETCURSEL, (WPARAM)nSel, 0);
 
-            // TODO: Check 'Keep existing filesystem' if PartEntry->New || PartEntry->FormatState == Unformatted .
+            /* If the partition is originally formatted,
+             * add the 'Keep existing filesystem' entry. */
+            if (!(PartEntry->New || PartEntry->FormatState == Unformatted))
+            {
+                // ComboBox_InsertString()
+                SendDlgItemMessageW(hDlg, IDC_FSTYPE, CB_INSERTSTRING, -1, (LPARAM)L"Existing filesystem");
+            }
 
+
+            MaxSize = (PartEntry->SectorCount.QuadPart * DiskEntry->BytesPerSector) / MB;  /* in MBytes (rounded) */
+            if (MaxSize > PARTITION_MAXSIZE)
+                MaxSize = PARTITION_MAXSIZE;
+            PartCreateCtx->MaxSize = MaxSize;
+
+            SendDlgItemMessageW(hDlg, IDC_UPDOWN_PARTSIZE, UDM_SETRANGE32, (WPARAM)1, (LPARAM)MaxSize);
+            SendDlgItemMessageW(hDlg, IDC_UPDOWN_PARTSIZE, UDM_SETPOS32, 0, (LPARAM)MaxSize);
+            // SetDlgItemInt(hDlg, IDC_EDIT_PARTSIZE, MaxSize, FALSE);
+
+            // TODO: If space is logical, or we are not MBR, disable and hide IDC_CHECK_MBREXTPART
+            CheckDlgButton(hDlg, IDC_CHECK_MBREXTPART, BST_UNCHECKED);
+            break;
+        }
+
+        case WM_NOTIFY:
+        {
+#if 0
+            LPPSHNOTIFY lppsn = (LPPSHNOTIFY)lParam;
+
+            if ((lppsn->hdr.code == UDN_DELTAPOS) &&
+                (lppsn->hdr.idFrom == IDC_UPDOWN_PARTSIZE))
+            {
+                LPNMUPDOWN lpnmud = (LPNMUPDOWN)lParam;
+                // DWORD wwidth;
+
+                /****/lpnmud = lpnmud;/****/
+                // wwidth = lpnmud->iPos + lpnmud->iDelta;
+
+                // /* Be sure that the (new) screen buffer sizes are in the correct range */
+                // wwidth = min(max(wwidth , 1), 0xFFFF);
+
+                // ConInfo->ScreenBufferSize.X = (SHORT)swidth;
+
+                // PropSheet_Changed(GetParent(hDlg), hDlg);
+            }
+#endif
             break;
         }
 
         case WM_COMMAND:
         {
+            if (HIWORD(wParam) != BN_CLICKED)
+                break;
+
             switch (LOWORD(wParam))
             {
-                case IDOK:
-                    EndDialog(hwndDlg, IDOK);
-                    return TRUE;
-                case IDCANCEL:
-                    EndDialog(hwndDlg, IDCANCEL);
-                    return TRUE;
+            case IDC_CHECK_MBREXTPART:
+            {
+                /* Check for MBR-extended (container) partition */
+                // BST_UNCHECKED or BST_INDETERMINATE => FALSE
+                if (IsDlgButtonChecked(hDlg, IDC_CHECK_MBREXTPART) == BST_CHECKED)
+                {
+                    /* It is, disable formatting options */
+                    // EnableDlgItem(hDlg, IDC_EDIT_WINDOW_POS_LEFT, FALSE); // FIXME: disable the static label as well
+                    EnableDlgItem(hDlg, IDC_FSTYPE, FALSE);
+                    EnableDlgItem(hDlg, IDC_CHECK_QUICKFMT, FALSE);
+                }
+                else
+                {
+                    /* It is not, re-enable formatting options */
+                    // EnableDlgItem(hDlg, IDC_EDIT_WINDOW_POS_LEFT, TRUE); // FIXME: enable the static label as well
+                    EnableDlgItem(hDlg, IDC_FSTYPE, TRUE);
+                    EnableDlgItem(hDlg, IDC_CHECK_QUICKFMT, TRUE);
+                }
+                break;
+            }
+
+            case IDC_CHECK_QUICKFMT:
+                break;
+
+            case IDOK:
+            {
+                PPARTENTRY PartEntry = PartCreateCtx->PartEntry;
+                PDISKENTRY DiskEntry = PartEntry->DiskEntry;
+                /*ULONGLONG*/ ULONG PartSize;
+                ULONGLONG SectorCount;
+
+                // PartSize = GetDlgItemInt(hDlg, IDC_EDIT_PARTSIZE, NULL, FALSE);
+                PartSize = (ULONG)SendDlgItemMessageW(hDlg, IDC_UPDOWN_PARTSIZE, UDM_SETPOS32, 0, (LPARAM)NULL);
+                PartSize = min(max(PartSize, 1), PartCreateCtx->MaxSize);
+
+                /* Convert to bytes */
+                if (PartSize == PartCreateCtx->MaxSize)
+                {
+                    /* Use all of the unpartitioned disk space */
+                    SectorCount = PartEntry->SectorCount.QuadPart;
+                }
+                else
+                {
+                    /* Calculate the sector count from the size in MB */
+                    SectorCount = PartSize * MB / DiskEntry->BytesPerSector;
+
+                    /* But never get larger than the unpartitioned disk space */
+                    if (SectorCount > PartEntry->SectorCount.QuadPart)
+                        SectorCount = PartEntry->SectorCount.QuadPart;
+                }
+
+                if (IsDlgButtonChecked(hDlg, IDC_CHECK_MBREXTPART) != BST_CHECKED)
+                {
+                    CreatePartition(PartCreateCtx->PartitionList,
+                                    PartEntry,
+                                    SectorCount,
+                                    FALSE);
+                }
+                else
+                {
+                    CreateExtendedPartition(PartCreateCtx->PartitionList,
+                                            PartEntry,
+                                            SectorCount);
+                }
+
+                // TODO: Consider doing something else if CreatePartition() fails?
+                EndDialog(hDlg, IDOK);
+                return TRUE;
+            }
+
+            case IDCANCEL:
+            {
+                EndDialog(hDlg, IDCANCEL);
+                return TRUE;
+            }
             }
         }
     }
@@ -655,14 +801,49 @@ PrintDiskData(
     TreeList_Expand(hWndList, htiDisk, TVE_EXPAND);
 }
 
-VOID
+static VOID
+InitPartitionList(
+    _In_ HINSTANCE hInstance,
+    _In_ HWND hWndList)
+{
+    HIMAGELIST hSmall;
+
+    TreeList_SetExtendedStyleEx(hWndList, TVS_EX_FULLROWMARK, TVS_EX_FULLROWMARK);
+    // TreeList_SetExtendedStyleEx(hWndList, TVS_EX_FULLROWITEMS, TVS_EX_FULLROWITEMS);
+
+    CreateTreeListColumns(hInstance,
+                          hWndList,
+                          column_ids,
+                          column_widths,
+                          column_alignment,
+                          MAX_LIST_COLUMNS);
+
+    /* Create the ImageList */
+    hSmall = ImageList_Create(GetSystemMetrics(SM_CXSMICON),
+                              GetSystemMetrics(SM_CYSMICON),
+                              ILC_COLOR32 | ILC_MASK, // ILC_COLOR24
+                              1, 1);
+
+    /* Add event type icons to the ImageList */
+    ImageList_AddIcon(hSmall, LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_DISKDRIVE)));
+    ImageList_AddIcon(hSmall, LoadIconW(hInstance, MAKEINTRESOURCEW(IDI_PARTITION)));
+
+    /* Assign the ImageList to the List View */
+    TreeList_SetImageList(hWndList, hSmall, TVSIL_NORMAL);
+}
+
+static VOID
 DrawPartitionList(
-    IN HWND hWndList,
-    IN PPARTLIST List)
+    _In_ HWND hWndList,
+    _In_ PPARTLIST List)
 {
     PLIST_ENTRY Entry;
     PDISKENTRY DiskEntry;
 
+    /* Clear the list first */
+    TreeList_DeleteAllItems(hWndList);
+
+    /* Insert all the detected disks and partitions */
     for (Entry = List->DiskListHead.Flink;
          Entry != &List->DiskListHead;
          Entry = Entry->Flink)
@@ -674,7 +855,16 @@ DrawPartitionList(
     }
 }
 
+static VOID
+CleanupPartitionList(
+    _In_ HWND hWndList)
+{
+    HIMAGELIST hSmall;
 
+    hSmall = TreeList_GetImageList(hWndList, TVSIL_NORMAL);
+    TreeList_SetImageList(hWndList, NULL, TVSIL_NORMAL);
+    ImageList_Destroy(hSmall);
+}
 
 INT_PTR
 CALLBACK
@@ -686,7 +876,6 @@ DriveDlgProc(
 {
     PSETUPDATA pSetupData;
     HWND hList;
-    HIMAGELIST hSmall;
 
     /* Retrieve pointer to the global setup data */
     pSetupData = (PSETUPDATA)GetWindowLongPtrW(hwndDlg, GWLP_USERDATA);
@@ -697,7 +886,7 @@ DriveDlgProc(
         {
             /* Save pointer to the global setup data */
             pSetupData = (PSETUPDATA)((LPPROPSHEETPAGE)lParam)->lParam;
-            SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (DWORD_PTR)pSetupData);
+            SetWindowLongPtrW(hwndDlg, GWLP_USERDATA, (LONG_PTR)pSetupData);
 
             /*
              * Keep the "Next" button disabled. It will be enabled only
@@ -707,40 +896,19 @@ DriveDlgProc(
 
             hList = GetDlgItem(hwndDlg, IDC_PARTITION);
 
-            TreeList_SetExtendedStyleEx(hList, TVS_EX_FULLROWMARK, TVS_EX_FULLROWMARK);
-            // TreeList_SetExtendedStyleEx(hList, TVS_EX_FULLROWITEMS, TVS_EX_FULLROWITEMS);
-
-            CreateTreeListColumns(pSetupData->hInstance,
-                                  hList,
-                                  column_ids,
-                                  column_widths,
-                                  column_alignment,
-                                  MAX_LIST_COLUMNS);
-
-            /* Create the ImageList */
-            hSmall = ImageList_Create(GetSystemMetrics(SM_CXSMICON),
-                                      GetSystemMetrics(SM_CYSMICON),
-                                      ILC_COLOR32 | ILC_MASK, // ILC_COLOR24
-                                      1, 1);
-
-            /* Add event type icons to the ImageList */
-            ImageList_AddIcon(hSmall, LoadIconW(pSetupData->hInstance, MAKEINTRESOURCEW(IDI_DISKDRIVE)));
-            ImageList_AddIcon(hSmall, LoadIconW(pSetupData->hInstance, MAKEINTRESOURCEW(IDI_PARTITION)));
-
-            /* Assign the ImageList to the List View */
-            TreeList_SetImageList(hList, hSmall, TVSIL_NORMAL);
+            InitPartitionList(pSetupData->hInstance, hList);
 
             // DisplayStuffUsingWin32Setup(hwndDlg);
             DrawPartitionList(hList, pSetupData->PartitionList);
+
+            // TODO: Enable/Disable/Show/Hide buttons
             break;
         }
 
         case WM_DESTROY:
         {
             hList = GetDlgItem(hwndDlg, IDC_PARTITION);
-            hSmall = TreeList_GetImageList(hList, TVSIL_NORMAL);
-            TreeList_SetImageList(hList, NULL, TVSIL_NORMAL);
-            ImageList_Destroy(hSmall);
+            CleanupPartitionList(hList);
             return TRUE;
         }
 
@@ -758,18 +926,109 @@ DriveDlgProc(
                     break;
                 }
 
+                case IDC_INITDISK:
+                {
+                    // TODO: Implement disk partitioning initialization
+                    break;
+                }
+
                 case IDC_PARTCREATE:
                 {
-                    DialogBoxParamW(pSetupData->hInstance,
-                                    MAKEINTRESOURCEW(IDD_PARTITION),
-                                    hwndDlg,
-                                    PartitionDlgProc,
-                                    (LPARAM)GetSelectedPartition(GetDlgItem(hwndDlg, IDC_PARTITION), NULL));
+                    INT_PTR ret;
+                    PARTCREATE_CTX PartCreateCtx;
+
+                    hList = GetDlgItem(hwndDlg, IDC_PARTITION);
+
+                    // PartCreateCtx.pSetupData = pSetupData;
+                    PartCreateCtx.PartitionList = pSetupData->PartitionList;
+                    PartCreateCtx.PartEntry = GetSelectedPartition(hList, NULL);
+                    PartCreateCtx.MaxSize = 0;
+
+                    ret = DialogBoxParamW(pSetupData->hInstance,
+                                          MAKEINTRESOURCEW(IDD_PARTITION),
+                                          hwndDlg,
+                                          PartitionDlgProc,
+                                          (LPARAM)&PartCreateCtx);
+
+                    /* If we created a partition... */
+                    if (ret == IDOK)
+                    {
+                        TVFIND tvf;
+                        HTLITEM index;
+
+                        /* ... redraw the list */
+                        DrawPartitionList(hList, pSetupData->PartitionList);
+
+                        /* Give the focus on and select the created partition */
+                        tvf.uFlags = TVIF_PARAM;
+                        tvf.lParam = (LPARAM)PartCreateCtx.PartEntry;
+                        index = TreeList_FindItem(hList, TVI_ROOT, &tvf);
+                        if (index) // > 0
+                        {
+                            // TreeList_SetFocusItem(hList, 1, 1);
+                            TreeList_SelectItem(hList, index);
+                        }
+                    }
+
                     break;
                 }
 
                 case IDC_PARTDELETE:
+                {
+                    PPARTENTRY PartEntry;
+                    HTLITEM hItem;
+                    LPCWSTR pszWarnMsg;
+
+                    hList = GetDlgItem(hwndDlg, IDC_PARTITION);
+
+                    PartEntry = GetSelectedPartition(hList, &hItem);
+                    if (!PartEntry)
+                    {
+                        // If the button was clicked, a partition
+                        // should have been selected first...
+                        ASSERT(FALSE);
+                        break;
+                    }
+
+                    // FIXME: Localize strings
+
+                    if (!PartEntry->LogicalPartition &&
+                        IsContainerPartition(PartEntry->PartitionType))
+                    {
+                        /* MBR-extended (container) partition: show different message */
+                        pszWarnMsg = L"Are you sure you want to delete the selected extended partition and ALL the logical partitions it contains?";
+                    }
+                    else
+                    {
+                        pszWarnMsg = L"Are you sure you want to delete the selected partition?";
+                        // L"Are you sure you want to delete partition\n%s\non disk\n%s\n?"
+                    }
+
+                    /* If the user really wants to delete the partition... */
+                    if (MessageBoxW(GetParent(hwndDlg),
+                                    pszWarnMsg,
+                                    L"Delete partition?",
+                                    MB_YESNO | MB_ICONWARNING) == IDYES)
+                    {
+                        /* ... make it so! */
+                        if (DeletePartition(pSetupData->PartitionList,
+                                            PartEntry,
+                                            NULL /*&PartEntry*/))
+                        {
+                            // FIXME: This works, but the problem is that
+                            // we don't update the list with new unpartitioned
+                            // space. So for the time being, just "redraw"
+                            // the entire list by re-enumerating everything...
+                        #if 0
+                            TreeList_DeleteItem(hList, hItem);
+                        #else
+                            DrawPartitionList(hList, pSetupData->PartitionList);
+                        #endif
+                        }
+                    }
+
                     break;
+                }
             }
             break;
         }
@@ -778,7 +1037,7 @@ DriveDlgProc(
         {
             LPNMHDR lpnm = (LPNMHDR)lParam;
 
-            // On Vista+ we can use TVN_ITEMCHANGED instead, with  NMTVITEMCHANGE* pointer
+            // On Vista+ we can use TVN_ITEMCHANGED instead, with NMTVITEMCHANGE* pointer
             if (lpnm->idFrom == IDC_PARTITION && lpnm->code == TVN_SELCHANGED)
             {
                 LPNMTREEVIEW pnmv = (LPNMTREEVIEW)lParam;
@@ -792,18 +1051,38 @@ DriveDlgProc(
                     {
                         HTLITEM hParentItem = TreeList_GetParent(lpnm->hwndFrom, pnmv->itemNew.hItem);
                         /* May or may not be a PPARTENTRY: this is a PPARTENTRY only when hParentItem != NULL */
-                        PPARTENTRY PartEntry = (PPARTENTRY)pnmv->itemNew.lParam;
 
-                        if (!hParentItem || !PartEntry)
+                        if (!hParentItem)
                         {
-                            EnableWindow(GetDlgItem(hwndDlg, IDC_PARTCREATE), TRUE);
-                            EnableWindow(GetDlgItem(hwndDlg, IDC_PARTDELETE), FALSE);
+                            /* Hard disk */
+                            PDISKENTRY DiskEntry = (PDISKENTRY)pnmv->itemNew.lParam;
+                            ASSERT(DiskEntry);
+
+                            ShowWindow(GetDlgItem(hwndDlg, IDC_INITDISK), SW_SHOW);
+                            ShowWindow(GetDlgItem(hwndDlg, IDC_PARTCREATE), SW_HIDE);
+                            ShowWindow(GetDlgItem(hwndDlg, IDC_PARTDELETE), SW_HIDE);
+                        #if 1 // FIXME: Init disk not implemented yet!
+                            EnableDlgItem(hwndDlg, IDC_INITDISK,
+                                          DiskEntry->DiskStyle == PARTITION_STYLE_RAW);
+                        #else
+                            EnableDlgItem(hwndDlg, IDC_INITDISK, FALSE);
+                        #endif
+                            EnableDlgItem(hwndDlg, IDC_PARTCREATE, FALSE);
+                            EnableDlgItem(hwndDlg, IDC_PARTDELETE, FALSE);
                             goto DisableWizNext;
                         }
-                        else // if (hParentItem && PartEntry)
+                        else
                         {
-                            EnableWindow(GetDlgItem(hwndDlg, IDC_PARTCREATE), !PartEntry->IsPartitioned);
-                            EnableWindow(GetDlgItem(hwndDlg, IDC_PARTDELETE),  PartEntry->IsPartitioned);
+                            /* Partition or unpartitioned space */
+                            PPARTENTRY PartEntry = (PPARTENTRY)pnmv->itemNew.lParam;
+                            ASSERT(PartEntry);
+
+                            ShowWindow(GetDlgItem(hwndDlg, IDC_INITDISK), SW_HIDE);
+                            ShowWindow(GetDlgItem(hwndDlg, IDC_PARTCREATE), SW_SHOW);
+                            ShowWindow(GetDlgItem(hwndDlg, IDC_PARTDELETE), SW_SHOW);
+                            EnableDlgItem(hwndDlg, IDC_INITDISK, FALSE);
+                            EnableDlgItem(hwndDlg, IDC_PARTCREATE, !PartEntry->IsPartitioned);
+                            EnableDlgItem(hwndDlg, IDC_PARTDELETE,  PartEntry->IsPartitioned);
 
                             if (PartEntry->IsPartitioned &&
                                 !IsContainerPartition(PartEntry->PartitionType) /* alternatively: PartEntry->PartitionNumber != 0 */ &&
