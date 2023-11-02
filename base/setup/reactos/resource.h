@@ -34,11 +34,13 @@
 #define IDC_KEYBOARD         2033
 #define IDC_KEYLAYOUT        2034
 
-#define IDD_DRIVEPAGE        2040
-#define IDC_PARTITION        2041
-#define IDC_PARTCREATE       2042
-#define IDC_PARTDELETE       2043
-#define IDC_DEVICEDRIVER     2044
+#define IDD_DRIVEPAGE           2040
+#define IDC_PARTITION           2041
+#define IDC_INITDISK            2042
+#define IDC_PARTCREATE          2043
+#define IDC_PARTDELETE          2044
+#define IDC_DEVICEDRIVER        2045
+#define IDC_PARTMOREOPTS        2046
 
 #define IDD_SUMMARYPAGE      2050
 #define IDC_INSTALLTYPE      2051
@@ -59,19 +61,18 @@
 #define IDD_RESTARTPAGE      2070
 #define IDC_FINISHTITLE      2071
 #define IDC_RESTART_PROGRESS 2072
-#define IDC_PARTMOREOPTS     2073
 
-#define IDD_BOOTOPTIONS      2080
+#define IDD_ADVINSTOPTS      2080
 #define IDC_PATH             2081
 #define IDC_INSTFREELDR      2082
-#define IDC_INSTVBRONLY      2083
-#define IDC_NOINSTFREELDR    2084
 
-#define IDD_PARTITION        2090
-#define IDC_UPDOWN1          2091
-#define IDC_PARTSIZE         2092
-#define IDC_UNIT             2093
-#define IDC_FSTYPE           2094
+#define IDD_PARTITION           2090
+#define IDC_EDIT_PARTSIZE       2091
+#define IDC_UPDOWN_PARTSIZE     2092
+#define IDC_UNIT                2093
+#define IDC_CHECK_MBREXTPART    2094
+#define IDC_FSTYPE              2095
+#define IDC_CHECK_QUICKFMT      2096
 
 
 /* Strings */
@@ -100,3 +101,10 @@
 #define IDS_PARTITION_TYPE   5201
 #define IDS_PARTITION_SIZE   5202
 #define IDS_PARTITION_STATUS 5203
+
+// WARNING: These IDs *MUST* stay in increasing order!
+#define IDS_BOOTLOADER_NOINST       5300
+#define IDS_BOOTLOADER_REMOVABLE    5301
+#define IDS_BOOTLOADER_SYSTEM       5302
+#define IDS_BOOTLOADER_MBRVBR       5303
+#define IDS_BOOTLOADER_VBRONLY      5304

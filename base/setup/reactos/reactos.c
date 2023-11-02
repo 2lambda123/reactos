@@ -91,10 +91,66 @@ CreateTitleFont(VOID)
     return hFont;
 }
 
-INT DisplayError(
-    IN HWND hParentWnd OPTIONAL,
-    IN UINT uIDTitle,
-    IN UINT uIDMessage)
+INT
+DisplayMessage(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uType,
+    _In_opt_ LPCWSTR pszTitle,
+    _In_ LPCWSTR pszFormatMessage,
+    ...)
+{
+    INT iRes;
+    WCHAR  StaticBuffer[256];
+    LPWSTR Buffer = StaticBuffer; // Use the static buffer by default.
+    LPCWSTR Format = pszFormatMessage;
+    size_t MsgLen;
+    va_list args;
+
+    va_start(args, pszFormatMessage);
+
+    /*
+     * Retrieve the message length and if it is too long, allocate
+     * an auxiliary buffer; otherwise use the static buffer.
+     * The string is built to be NULL-terminated.
+     */
+    MsgLen = _vscwprintf(Format, args);
+    if (MsgLen >= ARRAYSIZE(StaticBuffer))
+    {
+        Buffer = HeapAlloc(GetProcessHeap(), HEAP_ZERO_MEMORY, (MsgLen + 1) * sizeof(WCHAR));
+        if (Buffer == NULL)
+        {
+            /* Allocation failed, use the static buffer and display a suitable error message */
+            // Buffer = StaticBuffer;
+            // Format = L"DisplayMessage()\nOriginal message is too long and allocating an auxiliary buffer failed.";
+            // MsgLen = wcslen(Format);
+            Buffer = (LPWSTR)pszFormatMessage;
+        }
+    }
+
+    if (Buffer != (LPWSTR)pszFormatMessage)
+    {
+        /* Do the printf as we use the caller's format string */
+        ZeroMemory(Buffer, (MsgLen + 1) * sizeof(WCHAR));
+        _vsnwprintf(Buffer, MsgLen, Format, args);
+    }
+
+    va_end(args);
+
+    /* Display the message */
+    iRes = MessageBoxW(hParentWnd, Buffer, pszTitle, uType);
+
+    /* Free the buffer if needed */
+    if (Buffer != StaticBuffer && Buffer != (LPWSTR)pszFormatMessage)
+        HeapFree(GetProcessHeap(), 0, Buffer);
+
+    return iRes;
+}
+
+INT
+DisplayError(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uIDTitle,
+    _In_ UINT uIDMessage)
 {
     WCHAR message[512], caption[64];
 
@@ -1086,6 +1142,39 @@ FileCopyCallback(PVOID Context,
     return FILEOP_DOIT;
 }
 
+#if 0
+static VOID
+__cdecl
+RegistryStatus(IN REGISTRY_STATUS RegStatus, ...)
+{
+    /* WARNING: Please keep this lookup table in sync with the resources! */
+    static const UINT StringIDs[] =
+    {
+        STRING_DONE,                    /* Success */
+        STRING_REGHIVEUPDATE,           /* RegHiveUpdate */
+        STRING_IMPORTFILE,              /* ImportRegHive */
+        STRING_DISPLAYSETTINGSUPDATE,   /* DisplaySettingsUpdate */
+        STRING_LOCALESETTINGSUPDATE,    /* LocaleSettingsUpdate */
+        STRING_ADDKBLAYOUTS,            /* KeybLayouts */
+        STRING_KEYBOARDSETTINGSUPDATE,  /* KeybSettingsUpdate */
+        STRING_CODEPAGEINFOUPDATE,      /* CodePageInfoUpdate */
+    };
+
+    va_list args;
+
+    if (RegStatus < ARRAYSIZE(StringIDs))
+    {
+        va_start(args, RegStatus);
+        CONSOLE_SetStatusTextV(MUIGetString(StringIDs[RegStatus]), args);
+        va_end(args);
+    }
+    else
+    {
+        CONSOLE_SetStatusText("Unknown status %d", RegStatus);
+    }
+}
+#endif
+
 static DWORD
 WINAPI
 PrepareAndDoCopyThread(
@@ -1095,7 +1184,7 @@ PrepareAndDoCopyThread(
     HWND hwndDlg = (HWND)Param;
     HWND hWndProgress;
     LONG_PTR dwStyle;
-    // ERROR_NUMBER ErrorNumber;
+    ERROR_NUMBER ErrorNumber;
     BOOLEAN Success;
     COPYCONTEXT CopyContext;
 
@@ -1190,6 +1279,28 @@ PrepareAndDoCopyThread(
 
     /* Create the $winnt$.inf file */
     InstallSetupInfFile(&pSetupData->USetupData);
+
+
+    /*
+     * Create or update the registry hives
+     */
+
+    /* Set status text */
+    SetDlgItemTextW(hwndDlg, IDC_ACTIVITY,
+                    pSetupData->RepairUpdateFlag
+                        ? L"Updating the registry..."
+                        : L"Creating the registry...");
+    SetDlgItemTextW(hwndDlg, IDC_ITEM, L"");
+
+    ErrorNumber = UpdateRegistry(&pSetupData->USetupData,
+                                 pSetupData->RepairUpdateFlag,
+                                 pSetupData->PartitionList,
+                                 L'D', // DestinationDriveLetter,   // FIXME!!
+                                 pSetupData->SelectedLanguageId,
+                                 NULL, //RegistryStatus
+                                 NULL /* SubstSettings */);
+    UNREFERENCED_PARAMETER(ErrorNumber);
+
 
     /* We are done! Switch to the Terminate page */
     PropSheet_SetCurSelByID(GetParent(hwndDlg), IDD_RESTARTPAGE);
@@ -1844,6 +1955,8 @@ _tWinMain(HINSTANCE hInst,
     HPROPSHEETPAGE ahpsp[8];
     PROPSHEETPAGE psp = {0};
     UINT nPages = 0;
+
+__debugbreak();
 
     ProcessHeap = GetProcessHeap();
 

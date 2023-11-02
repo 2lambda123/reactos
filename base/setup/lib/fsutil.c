@@ -242,13 +242,13 @@ GetFileSystemByName(
 /** ChkdskEx() **/
 NTSTATUS
 ChkdskFileSystem_UStr(
-    IN PUNICODE_STRING DriveRoot,
-    IN PCWSTR FileSystemName,
-    IN BOOLEAN FixErrors,
-    IN BOOLEAN Verbose,
-    IN BOOLEAN CheckOnlyIfDirty,
-    IN BOOLEAN ScanDrive,
-    IN PFMIFSCALLBACK Callback)
+    _In_ PUNICODE_STRING DriveRoot,
+    _In_ PCWSTR FileSystemName,
+    _In_ BOOLEAN FixErrors,
+    _In_ BOOLEAN Verbose,
+    _In_ BOOLEAN CheckOnlyIfDirty,
+    _In_ BOOLEAN ScanDrive,
+    _In_opt_ PFMIFSCALLBACK Callback)
 {
     PFILE_SYSTEM FileSystem;
     NTSTATUS Status;
@@ -285,13 +285,13 @@ ChkdskFileSystem_UStr(
 
 NTSTATUS
 ChkdskFileSystem(
-    IN PCWSTR DriveRoot,
-    IN PCWSTR FileSystemName,
-    IN BOOLEAN FixErrors,
-    IN BOOLEAN Verbose,
-    IN BOOLEAN CheckOnlyIfDirty,
-    IN BOOLEAN ScanDrive,
-    IN PFMIFSCALLBACK Callback)
+    _In_ PCWSTR DriveRoot,
+    _In_ PCWSTR FileSystemName,
+    _In_ BOOLEAN FixErrors,
+    _In_ BOOLEAN Verbose,
+    _In_ BOOLEAN CheckOnlyIfDirty,
+    _In_ BOOLEAN ScanDrive,
+    _In_opt_ PFMIFSCALLBACK Callback)
 {
     UNICODE_STRING DriveRootU;
 
@@ -309,13 +309,13 @@ ChkdskFileSystem(
 /** FormatEx() **/
 NTSTATUS
 FormatFileSystem_UStr(
-    IN PUNICODE_STRING DriveRoot,
-    IN PCWSTR FileSystemName,
-    IN FMIFS_MEDIA_FLAG MediaFlag,
-    IN PUNICODE_STRING Label,
-    IN BOOLEAN QuickFormat,
-    IN ULONG ClusterSize,
-    IN PFMIFSCALLBACK Callback)
+    _In_ PUNICODE_STRING DriveRoot,
+    _In_ PCWSTR FileSystemName,
+    _In_ FMIFS_MEDIA_FLAG MediaFlag,
+    _In_opt_ PUNICODE_STRING Label,
+    _In_ BOOLEAN QuickFormat,
+    _In_ ULONG ClusterSize,
+    _In_opt_ PFMIFSCALLBACK Callback)
 {
     PFILE_SYSTEM FileSystem;
     BOOLEAN Success;
@@ -374,13 +374,13 @@ FormatFileSystem_UStr(
 
 NTSTATUS
 FormatFileSystem(
-    IN PCWSTR DriveRoot,
-    IN PCWSTR FileSystemName,
-    IN FMIFS_MEDIA_FLAG MediaFlag,
-    IN PCWSTR Label,
-    IN BOOLEAN QuickFormat,
-    IN ULONG ClusterSize,
-    IN PFMIFSCALLBACK Callback)
+    _In_ PCWSTR DriveRoot,
+    _In_ PCWSTR FileSystemName,
+    _In_ FMIFS_MEDIA_FLAG MediaFlag,
+    _In_opt_ PCWSTR Label,
+    _In_ BOOLEAN QuickFormat,
+    _In_ ULONG ClusterSize,
+    _In_opt_ PFMIFSCALLBACK Callback)
 {
     UNICODE_STRING DriveRootU;
     UNICODE_STRING LabelU;
@@ -908,6 +908,378 @@ FormatPartition(
     PartEntry->New = FALSE;
 
     return STATUS_SUCCESS;
+}
+
+
+//
+// FileSystem Volume Operations Queue
+//
+
+static FSVOL_OP
+DoFormatting(
+    IN PPARTENTRY PartEntry,
+    IN PVOID Context OPTIONAL,
+    IN PFSVOL_CALLBACK FsVolCallback OPTIONAL)
+{
+    FSVOL_OP Result;
+    NTSTATUS Status = STATUS_SUCCESS;
+    FORMAT_PARTITION_INFO PartInfo;
+
+    ASSERT(PartEntry->IsPartitioned && PartEntry->PartitionNumber != 0);
+
+    PartInfo.PartEntry = PartEntry;
+
+RetryFormat:
+    Result = FsVolCallback(Context,
+                           FSVOLNOTIFY_STARTFORMAT,
+                           (ULONG_PTR)&PartInfo,
+                           FSVOL_FORMAT);
+    if (Result != FSVOL_DOIT)
+        goto EndFormat;
+
+    ASSERT(PartInfo.FileSystemName && *PartInfo.FileSystemName);
+
+    /* Format the partition */
+    Status = FormatPartition(PartEntry,
+                             PartInfo.FileSystemName,
+                             PartInfo.MediaFlag,
+                             PartInfo.Label,
+                             PartInfo.QuickFormat,
+                             PartInfo.ClusterSize,
+                             PartInfo.Callback);
+    if (!NT_SUCCESS(Status))
+    {
+        // PartInfo.NtPathPartition = PathBuffer;
+        PartInfo.ErrorStatus = Status;
+
+        Result = FsVolCallback(Context,
+                               FSVOLNOTIFY_FORMATERROR,
+                               (ULONG_PTR)&PartInfo,
+                               0);
+        if (Result == FSVOL_RETRY)
+            goto RetryFormat;
+        // else if (Result == FSVOL_ABORT || Result == FSVOL_SKIP), stop.
+    }
+
+EndFormat:
+    /* This notification is always sent, even in case of error or abort */
+    PartInfo.ErrorStatus = Status;
+    FsVolCallback(Context,
+                  FSVOLNOTIFY_ENDFORMAT,
+                  (ULONG_PTR)&PartInfo,
+                  0);
+    return Result;
+}
+
+static FSVOL_OP
+DoChecking(
+    IN PPARTENTRY PartEntry,
+    IN PVOID Context OPTIONAL,
+    IN PFSVOL_CALLBACK FsVolCallback OPTIONAL)
+{
+    FSVOL_OP Result;
+    NTSTATUS Status = STATUS_SUCCESS;
+    CHECK_PARTITION_INFO PartInfo;
+
+    ASSERT(PartEntry->IsPartitioned && PartEntry->PartitionNumber != 0);
+
+#if 0
+    /* HACK: Do not try to check a partition with an unknown filesystem */
+    if (!*PartEntry->FileSystem)
+    {
+        PartEntry->NeedsCheck = FALSE;
+        return FSVOL_SKIP;
+    }
+#else
+    ASSERT(*PartEntry->FileSystem);
+#endif
+
+    PartInfo.PartEntry = PartEntry;
+
+RetryCheck:
+    Result = FsVolCallback(Context,
+                           FSVOLNOTIFY_STARTCHECK,
+                           (ULONG_PTR)&PartInfo,
+                           FSVOL_CHECK);
+    if (Result != FSVOL_DOIT)
+        goto EndCheck;
+
+    /* Check the partition */
+    Status = ChkdskPartition(PartEntry,
+                             PartInfo.FixErrors,
+                             PartInfo.Verbose,
+                             PartInfo.CheckOnlyIfDirty,
+                             PartInfo.ScanDrive,
+                             PartInfo.Callback);
+    if (!NT_SUCCESS(Status))
+    {
+        // PartInfo.NtPathPartition = PathBuffer;
+        PartInfo.ErrorStatus = Status;
+
+        Result = FsVolCallback(Context,
+                               FSVOLNOTIFY_CHECKERROR,
+                               (ULONG_PTR)&PartInfo,
+                               0);
+        if (Result == FSVOL_RETRY)
+            goto RetryCheck;
+        // else if (Result == FSVOL_ABORT || Result == FSVOL_SKIP), stop.
+    }
+
+EndCheck:
+    /* This notification is always sent, even in case of error or abort */
+    PartInfo.ErrorStatus = Status;
+    FsVolCallback(Context,
+                  FSVOLNOTIFY_ENDCHECK,
+                  (ULONG_PTR)&PartInfo,
+                  0);
+    return Result;
+}
+
+BOOLEAN
+FsVolCommitOpsQueue(
+    IN PPARTLIST PartitionList,
+    IN PPARTENTRY InstallPartition,
+    IN PPARTENTRY SystemPartition,
+    IN PFSVOL_CALLBACK FsVolCallback OPTIONAL,
+    IN PVOID Context OPTIONAL)
+{
+    BOOLEAN Success = TRUE; // Suppose success.
+    FSVOL_OP Result;
+    PPARTENTRY PartEntry;
+
+    /* Machine state for the format step */
+    typedef enum _FORMATMACHINESTATE
+    {
+        Start,
+        FormatSystemPartition,
+        FormatInstallPartition,
+        FormatOtherPartition,
+        FormatDone
+    } FORMATMACHINESTATE;
+    FORMATMACHINESTATE FormatState = Start;
+
+    ASSERT(PartitionList && InstallPartition && SystemPartition);
+
+    /* Commit all partition changes to all the disks */
+    if (!WritePartitionsToDisk(PartitionList))
+    {
+        DPRINT("WritePartitionsToDisk() failed\n");
+        /* Result = */ FsVolCallback(Context,
+                            SystemPartitionError,       // FIXME
+                            STATUS_PARTITION_FAILURE,   // FIXME
+                            0);
+        return FALSE;
+    }
+
+//
+// FIXME: TODO: Do we do the following here, or in the caller ??
+//
+    /*
+     * In all cases, whether or not we are going to perform a formatting,
+     * we must perform a filesystem check of both the system and the
+     * installation partitions.
+     */
+    SystemPartition->NeedsCheck = TRUE;
+    InstallPartition->NeedsCheck = TRUE;
+
+    Result = FsVolCallback(Context,
+                           FSVOLNOTIFY_STARTQUEUE,
+                           0, 0);
+    if (Result == FSVOL_ABORT)
+        return FALSE;
+
+    /*
+     * Commit the Format queue
+     */
+
+    /* Reset the formatter machine state */
+    FormatState = Start;
+
+    Result = FsVolCallback(Context,
+                           FSVOLNOTIFY_STARTSUBQUEUE,
+                           FSVOL_FORMAT,
+                           0);
+    if (Result == FSVOL_ABORT)
+        return FALSE;
+    /** HACK!! **/
+    if (Result == FSVOL_SKIP)
+        goto StartCheckQueue;
+    /** END HACK!! **/
+
+    // ASSERT(SystemPartition->IsPartitioned);
+
+NextFormat:
+    PartEntry = NULL;
+    switch (FormatState)
+    {
+        case Start:
+        {
+            /*
+             * We start by formatting the system partition in case it is new
+             * (it didn't exist before) and is not the same as the installation
+             * partition. Otherwise we just require a filesystem check on it,
+             * and start by formatting the installation partition instead.
+             */
+
+            ASSERT(SystemPartition->IsPartitioned);
+
+            if ((SystemPartition != InstallPartition) &&
+                (SystemPartition->FormatState == Unformatted))
+            {
+                PartEntry = SystemPartition;
+                PartEntry->NeedsCheck = TRUE;
+
+                // TODO: Should we let the user use a custom file-system,
+                // or should we always use FAT(32) for it?
+                // For "compatibility", FAT(32) would be best indeed.
+
+                DPRINT1("FormatState: Start --> FormatSystemPartition\n");
+                FormatState = FormatSystemPartition;
+            }
+            else
+            {
+                PartEntry = InstallPartition;
+                PartEntry->NeedsCheck = TRUE;
+
+                if (SystemPartition != InstallPartition)
+                {
+                    /* The system partition is separate, so it had better be formatted! */
+                    ASSERT((SystemPartition->FormatState == Preformatted) ||
+                           (SystemPartition->FormatState == Formatted));
+
+                    /* Require a filesystem check on the system partition too */
+                    SystemPartition->NeedsCheck = TRUE;
+                }
+
+                DPRINT1("FormatState: Start --> FormatInstallPartition\n");
+                FormatState = FormatInstallPartition;
+            }
+            break;
+        }
+
+        case FormatSystemPartition:
+        {
+            PartEntry = InstallPartition;
+            PartEntry->NeedsCheck = TRUE;
+
+            DPRINT1("FormatState: FormatSystemPartition --> FormatInstallPartition\n");
+            FormatState = FormatInstallPartition;
+            break;
+        }
+
+        case FormatInstallPartition:
+        case FormatOtherPartition:
+        {
+            if (GetNextUnformattedPartition(PartitionList,
+                                            NULL,
+                                            &PartEntry))
+            {
+                ASSERT(PartEntry);
+                PartEntry->NeedsCheck = TRUE;
+
+                if (FormatState == FormatInstallPartition)
+                    DPRINT1("FormatState: FormatInstallPartition --> FormatOtherPartition\n");
+                else
+                    DPRINT1("FormatState: FormatOtherPartition --> FormatOtherPartition\n");
+
+                FormatState = FormatOtherPartition;
+            }
+            else
+            {
+                if (FormatState == FormatInstallPartition)
+                    DPRINT1("FormatState: FormatInstallPartition --> FormatDone\n");
+                else
+                    DPRINT1("FormatState: FormatOtherPartition --> FormatDone\n");
+
+                FormatState = FormatDone;
+                Success = TRUE;
+                goto EndFormat;
+            }
+            break;
+        }
+
+        case FormatDone:
+        {
+            DPRINT1("FormatState: FormatDone\n");
+            Success = TRUE;
+            goto EndFormat;
+        }
+
+        default:
+        {
+            DPRINT1("FormatState: Invalid value %ld\n", FormatState);
+            ASSERT(FALSE);
+            Success = FALSE;
+            goto Quit;
+        }
+    }
+
+    ASSERT(PartEntry);
+    Result = DoFormatting(PartEntry, Context, FsVolCallback);
+    if (Result == FSVOL_ABORT)
+    {
+        Success = FALSE;
+        goto Quit;
+    }
+    else
+    {
+        /* Go to the next partition to be formatted */
+        goto NextFormat;
+    }
+
+EndFormat:
+    FsVolCallback(Context,
+                  FSVOLNOTIFY_ENDSUBQUEUE,
+                  FSVOL_FORMAT,
+                  0);
+
+
+    /*
+     * Commit the CheckFS queue
+     */
+
+StartCheckQueue:
+    Result = FsVolCallback(Context,
+                           FSVOLNOTIFY_STARTSUBQUEUE,
+                           FSVOL_CHECK,
+                           0);
+    if (Result == FSVOL_ABORT)
+        return FALSE;
+
+NextCheck:
+    if (!GetNextUncheckedPartition(PartitionList, NULL, &PartEntry))
+    {
+        Success = TRUE;
+        goto EndCheck;
+    }
+
+    ASSERT(PartEntry);
+    Result = DoChecking(PartEntry, Context, FsVolCallback);
+    if (Result == FSVOL_ABORT)
+    {
+        Success = FALSE;
+        goto Quit;
+    }
+    else
+    {
+        /* Go to the next partition to be checked */
+        goto NextCheck;
+    }
+
+EndCheck:
+    FsVolCallback(Context,
+                  FSVOLNOTIFY_ENDSUBQUEUE,
+                  FSVOL_CHECK,
+                  0);
+
+
+Quit:
+    /* All the queues have been committed */
+    FsVolCallback(Context,
+                  FSVOLNOTIFY_ENDQUEUE,
+                  Success,
+                  0);
+    return Success;
 }
 
 /* EOF */

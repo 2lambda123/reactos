@@ -39,9 +39,9 @@ static
 BOOLEAN
 NTAPI
 ChkdskCallback(
-    IN CALLBACKCOMMAND Command,
-    IN ULONG Modifier,
-    IN PVOID Argument)
+    _In_ CALLBACKCOMMAND Command,
+    _In_ ULONG Modifier,
+    _In_ PVOID Argument)
 {
     switch (Command)
     {
@@ -53,11 +53,17 @@ ChkdskCallback(
     return TRUE;
 }
 
-NTSTATUS
-DoChkdsk(
-    IN PPARTENTRY PartEntry)
+VOID
+StartCheck(
+    _Inout_ PCHECK_PARTITION_INFO PartInfo)
 {
-    NTSTATUS Status;
+    // TODO: Think about which values could be defaulted...
+    // PartInfo->FileSystemName = PartInfo->PartEntry->FileSystem;
+    PartInfo->FixErrors = TRUE;
+    PartInfo->Verbose = FALSE;
+    PartInfo->CheckOnlyIfDirty = TRUE;
+    PartInfo->ScanDrive = FALSE;
+    PartInfo->Callback = ChkdskCallback;
 
     ChkdskProgressBar = CreateProgressBar(6,
                                           yScreen - 14,
@@ -69,21 +75,16 @@ DoChkdsk(
                                           MUIGetString(STRING_CHECKINGDISK));
 
     ProgressSetStepCount(ChkdskProgressBar, 100);
+}
 
-    // TODO: Think about which values could be defaulted...
-    Status = ChkdskPartition(PartEntry,
-                             TRUE,            /* FixErrors */
-                             FALSE,           /* Verbose */
-                             TRUE,            /* CheckOnlyIfDirty */
-                             FALSE,           /* ScanDrive */
-                             ChkdskCallback); /* Callback */
-
+VOID
+EndCheck(
+    _In_ NTSTATUS Status)
+{
     DestroyProgressBar(ChkdskProgressBar);
     ChkdskProgressBar = NULL;
 
     DPRINT("ChkdskPartition() finished with status 0x%08lx\n", Status);
-
-    return Status;
 }
 
 /* EOF */

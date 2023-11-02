@@ -45,6 +45,9 @@
 #include <commctrl.h>
 #include <windowsx.h>
 
+#define EnableDlgItem(hDlg, nID, bEnable)   \
+    EnableWindow(GetDlgItem((hDlg), (nID)), (bEnable))
+
 /* These are public names and values determined from MFC, and compatible with Windows */
 // Property Sheet control id's (determined with Spy++)
 #define IDC_TAB_CONTROL                 0x3020
@@ -170,6 +173,17 @@ ConvertNtPathToWin32Path(
 
 /* drivepage.c */
 
+INT_PTR
+CALLBACK
+DriveDlgProc(
+    _In_ HWND hwndDlg,
+    _In_ UINT uMsg,
+    _In_ WPARAM wParam,
+    _In_ LPARAM lParam);
+
+
+/* reactos.c */
+
 BOOL
 CreateListViewColumns(
     IN HINSTANCE hInstance,
@@ -179,13 +193,20 @@ CreateListViewColumns(
     IN const INT* pColsAlign,
     IN UINT nNumOfColumns);
 
-INT_PTR
-CALLBACK
-DriveDlgProc(
-    HWND hwndDlg,
-    UINT uMsg,
-    WPARAM wParam,
-    LPARAM lParam);
+INT
+DisplayMessage(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uType,
+    _In_opt_ LPCWSTR pszTitle,
+    _In_ LPCWSTR pszFormatMessage,
+    ...);
+
+INT
+DisplayError(
+    _In_opt_ HWND hParentWnd,
+    _In_ UINT uIDTitle,
+    _In_ UINT uIDMessage);
+
 
 #endif /* _REACTOS_PCH_ */
 

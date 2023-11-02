@@ -154,13 +154,13 @@ CheckUnattendedSetup(
     IsUnattendedSetup = TRUE;
     DPRINT("Running unattended setup\n");
 
-    /* Search for 'MBRInstallType' in the 'Unattend' section */
-    pSetupData->MBRInstallType = -1;
-    if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"MBRInstallType", &Context))
+    /* Search for 'BootLoaderLocation' in the 'Unattend' section */
+    pSetupData->BootLoaderLocation = 2; // Default to "system partition"
+    if (SpInfFindFirstLine(UnattendInf, L"Unattend", L"BootLoaderLocation", &Context))
     {
         if (SpInfGetIntField(&Context, 1, &IntValue))
         {
-            pSetupData->MBRInstallType = IntValue;
+            pSetupData->BootLoaderLocation = IntValue;
         }
     }
 
@@ -411,7 +411,7 @@ GetSourcePaths(
     PWCHAR Ptr;
 
     // FIXME: commented out to allow installation from USB
-#if 0
+#if 1
     /* Determine the installation source path via the full path of the installer */
     RtlInitEmptyUnicodeString(InstallSourcePath,
                               (PWSTR)((ULONG_PTR)ImageFileBuffer + sizeof(UNICODE_STRING)),
@@ -434,7 +434,7 @@ GetSourcePaths(
     Ptr = wcsrchr(InstallSourcePath->Buffer, OBJ_NAME_PATH_SEPARATOR);
     if (Ptr)
         *Ptr = UNICODE_NULL;
-    InstallSourcePath->Length = wcslen(InstallSourcePath->Buffer) * sizeof(WCHAR);
+    InstallSourcePath->Length = (USHORT)wcslen(InstallSourcePath->Buffer) * sizeof(WCHAR);
 #endif
 
     /*
@@ -481,7 +481,7 @@ GetSourcePaths(
 
     /* Check whether the resolved \SystemRoot is a prefix of the image file path */
     // FIXME: commented out to allow installation from USB
-    // if (RtlPrefixUnicodeString(&SystemRootPath, InstallSourcePath, TRUE))
+    if (RtlPrefixUnicodeString(&SystemRootPath, InstallSourcePath, TRUE))
     {
         /* Yes it is, so we use instead SystemRoot as the installation source path */
         InstallSourcePath = &SystemRootPath;
@@ -621,6 +621,95 @@ LoadSetupInf(
     }
 
     return ERROR_SUCCESS;
+}
+
+/**
+ * @brief   Find or set the active system partition.
+ **/
+BOOLEAN
+InitSystemPartition(
+    /**/_In_ PPARTLIST PartitionList,       /* HACK HACK! */
+    /**/_In_ PPARTENTRY InstallPartition,   /* HACK HACK! */
+    /**/_Out_ PPARTENTRY* pSystemPartition, /* HACK HACK! */
+    _In_opt_ PFSVOL_CALLBACK FsVolCallback,
+    _In_opt_ PVOID Context)
+{
+    FSVOL_OP Result;
+    PPARTENTRY SystemPartition;
+    PPARTENTRY OldActivePart;
+
+    /*
+     * If we install on a fixed disk, try to find a supported system
+     * partition on the system. Otherwise if we install on a removable disk
+     * use the install partition as the system partition.
+     */
+    if (InstallPartition->DiskEntry->MediaType == FixedMedia)
+    {
+        SystemPartition = FindSupportedSystemPartition(PartitionList,
+                                                       FALSE,
+                                                       InstallPartition->DiskEntry,
+                                                       InstallPartition);
+        /* Use the original system partition as the old active partition hint */
+        OldActivePart = PartitionList->SystemPartition;
+
+        if ( SystemPartition && PartitionList->SystemPartition &&
+            (SystemPartition != PartitionList->SystemPartition) )
+        {
+            DPRINT1("We are using a different system partition!!\n");
+
+            Result = FsVolCallback(Context,
+                                   ChangeSystemPartition,
+                                   (ULONG_PTR)SystemPartition,
+                                   0);
+            if (Result != FSVOL_DOIT)
+                return FALSE;
+        }
+    }
+    else // if (InstallPartition->DiskEntry->MediaType == RemovableMedia)
+    {
+        SystemPartition = InstallPartition;
+        /* Don't specify any old active partition hint */
+        OldActivePart = NULL;
+    }
+
+    if (!SystemPartition)
+    {
+        FsVolCallback(Context,
+                      SystemPartitionError,
+                      ERROR_SYSTEM_PARTITION_NOT_FOUND,
+                      0);
+        return FALSE;
+    }
+
+    *pSystemPartition = SystemPartition;
+
+    /*
+     * If the system partition can be created in some
+     * non-partitioned space, create it now.
+     */
+    if (!SystemPartition->IsPartitioned)
+    {
+        CreatePartition(PartitionList,
+                        SystemPartition,
+                        0LL, // SystemPartition->SectorCount.QuadPart,
+                        TRUE);
+        ASSERT(SystemPartition->IsPartitioned);
+    }
+
+    /* Set it as such */
+    if (!SetActivePartition(PartitionList, SystemPartition, OldActivePart))
+    {
+        DPRINT1("SetActivePartition(0x%p) failed?!\n", SystemPartition);
+        ASSERT(FALSE);
+    }
+
+    /*
+     * In all cases, whether or not we are going to perform a formatting,
+     * we must perform a filesystem check of the system partition.
+     */
+    SystemPartition->NeedsCheck = TRUE;
+
+    return TRUE;
 }
 
 NTSTATUS
