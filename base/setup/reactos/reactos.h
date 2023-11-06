@@ -158,6 +158,40 @@ extern BOOLEAN IsUnattendedSetup;
 
 extern SETUPDATA SetupData;
 
+extern PPARTENTRY InstallPartition;
+extern PPARTENTRY SystemPartition;
+
+/* UI elements */
+typedef struct _UI_CONTEXT
+{
+    HWND hPartList; // Disks & partitions list
+    HWND hwndDlg;   // Install progress page
+    HWND hWndItem;  // Progress action
+    HWND hWndProgress;  // Progress gauge
+    LONG_PTR dwPbStyle; // Progress gauge style
+} UI_CONTEXT, *PUI_CONTEXT;
+
+extern UI_CONTEXT UiContext;
+
+/**
+ * @brief   Data structure stored for the partition entries in the TreeList.
+ **/
+typedef struct _PARTINFO
+{
+    PPARTENTRY PartEntry;
+
+    /* Volume-related parameters:
+     * Cached input information that will be set to the
+     * FORMAT_PARTITION_INFO structure given to the
+     * 'FSVOLNOTIFY_STARTFORMAT' step */
+    // PCWSTR FileSystemName;
+    WCHAR FileSystemName[MAX_PATH+1];
+    FMIFS_MEDIA_FLAG MediaFlag;
+    PCWSTR Label;
+    BOOLEAN QuickFormat;
+    ULONG ClusterSize;
+} PARTINFO, *PPARTINFO;
+
 
 /*
  * Attempts to convert a pure NT file path into a corresponding Win32 path.
@@ -210,4 +244,4 @@ DisplayError(
 
 #endif /* _REACTOS_PCH_ */
 
-/* EOP */
+/* EOF */

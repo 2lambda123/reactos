@@ -47,11 +47,8 @@ FormatCallback(
     {
         case PROGRESS:
         {
-            PULONG Percent;
-
-            Percent = (PULONG)Argument;
+            PULONG Percent = (PULONG)Argument;
             DPRINT("%lu percent completed\n", *Percent);
-
             ProgressSetStep(FormatProgressBar, *Percent);
             break;
         }
@@ -59,8 +56,7 @@ FormatCallback(
 #if 0
         case OUTPUT:
         {
-            PTEXTOUTPUT Output;
-            output = (PTEXTOUTPUT) Argument;
+            PTEXTOUTPUT output = (PTEXTOUTPUT)Argument;
             DPRINT("%s\n", output->Output);
             break;
         }
@@ -68,15 +64,14 @@ FormatCallback(
 
         case DONE:
         {
-            // PBOOLEAN Success;
-            DPRINT("Done\n");
 #if 0
-            Success = (PBOOLEAN)Argument;
+            PBOOLEAN Success = (PBOOLEAN)Argument;
             if (*Success == FALSE)
             {
                 DPRINT("FormatEx was unable to complete successfully.\n\n");
             }
 #endif
+            DPRINT("Done\n");
             break;
         }
 
