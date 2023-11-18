@@ -12,6 +12,9 @@
 
 // NOTE: They should be moved into some global header.
 
+// /* We have to define it there, because it is not in the MS DDK */
+// #define PARTITION_LINUX 0x83
+
 /* OEM MBR partition types recognized by NT (see [MS-DMRP] Appendix B) */
 #define PARTITION_EISA          0x12    // EISA partition
 #define PARTITION_HIBERNATION   0x84    // Hibernation partition for laptops
@@ -28,15 +31,6 @@
 
 
 /* PARTITION UTILITY FUNCTIONS **********************************************/
-
-typedef enum _FORMATSTATE
-{
-    Unformatted,
-    UnformattedOrDamaged,
-    UnknownFormat,
-    Preformatted,
-    Formatted
-} FORMATSTATE, *PFORMATSTATE;
 
 typedef struct _PARTENTRY
 {
@@ -55,10 +49,8 @@ typedef struct _PARTENTRY
     ULONG PartitionNumber;       /* Current partition number, only valid for the currently running NTOS instance */
     ULONG PartitionIndex;        /* Index in the LayoutBuffer->PartitionEntry[] cached array of the corresponding DiskEntry */
 
-    WCHAR DriveLetter;
-    WCHAR VolumeLabel[20];
-    WCHAR FileSystem[MAX_PATH+1];
-    FORMATSTATE FormatState;
+    /* Volume-related properties */
+    PVOLENTRY Volume; // FIXME: Do it differently?
 
     BOOLEAN LogicalPartition;
 
@@ -73,8 +65,8 @@ typedef struct _PARTENTRY
     /* Partition was created automatically */
     BOOLEAN AutoCreate;
 
-    /* Partition must be checked */
-    BOOLEAN NeedsCheck;
+    // /* Partition must be checked */
+    // BOOLEAN NeedsCheck;
 
 } PARTENTRY, *PPARTENTRY;
 
@@ -111,8 +103,9 @@ typedef struct _DISKENTRY
     ULONG DiskNumber;
 //  SCSI_ADDRESS;
     USHORT Port;
-    USHORT Bus;
-    USHORT Id;
+    USHORT Bus;  // PathId;
+    USHORT Id;   // TargetId;
+    // USHORT Lun;
 
     /* Has the partition list been modified? */
     BOOLEAN Dirty;
@@ -285,14 +278,20 @@ SelectPartition(
     IN ULONG PartitionNumber);
 
 PPARTENTRY
-GetNextPartition(
-    IN PPARTLIST List,
-    IN PPARTENTRY CurrentPart OPTIONAL);
+GetNextDiskRegion(
+    _In_opt_ PDISKENTRY CurrentDisk,
+    _In_opt_ PPARTENTRY CurrentPart);
 
 PPARTENTRY
-GetPrevPartition(
-    IN PPARTLIST List,
-    IN PPARTENTRY CurrentPart OPTIONAL);
+GetPrevDiskRegion(
+    _In_opt_ PDISKENTRY CurrentDisk,
+    _In_opt_ PPARTENTRY CurrentPart);
+
+PPARTENTRY
+GetAdjPartition(
+    _In_ PPARTLIST List,
+    _In_opt_ PPARTENTRY CurrentPart,
+    _In_ BOOLEAN Direction);
 
 ERROR_NUMBER
 PartitionCreationChecks(
@@ -361,16 +360,9 @@ SetMBRPartitionType(
     IN PPARTENTRY PartEntry,
     IN UCHAR PartitionType);
 
-BOOLEAN
-GetNextUnformattedPartition(
-    IN PPARTLIST List,
-    OUT PDISKENTRY *pDiskEntry OPTIONAL,
-    OUT PPARTENTRY *pPartEntry);
-
-BOOLEAN
-GetNextUncheckedPartition(
-    IN PPARTLIST List,
-    OUT PDISKENTRY *pDiskEntry OPTIONAL,
-    OUT PPARTENTRY *pPartEntry);
+PPARTENTRY
+GetNextDataPartition(
+    _In_ PPARTLIST List,
+    _In_opt_ PPARTENTRY CurrentPart);
 
 /* EOF */

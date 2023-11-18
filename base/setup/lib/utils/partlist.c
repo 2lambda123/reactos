@@ -65,8 +65,8 @@ DumpPartitionTable(
 
 ULONGLONG
 AlignDown(
-    IN ULONGLONG Value,
-    IN ULONG Alignment)
+    _In_ ULONGLONG Value,
+    _In_ ULONG Alignment)
 {
     ULONGLONG Temp;
 
@@ -75,10 +75,11 @@ AlignDown(
     return Temp * Alignment;
 }
 
+// Unused
 ULONGLONG
 AlignUp(
-    IN ULONGLONG Value,
-    IN ULONG Alignment)
+    _In_ ULONGLONG Value,
+    _In_ ULONG Alignment)
 {
     ULONGLONG Temp, Result;
 
@@ -91,10 +92,11 @@ AlignUp(
     return Result;
 }
 
+// Unused
 ULONGLONG
 RoundingDivide(
-   IN ULONGLONG Dividend,
-   IN ULONGLONG Divisor)
+    _In_ ULONGLONG Dividend,
+    _In_ ULONGLONG Divisor)
 {
     return (Dividend + Divisor / 2) / Divisor;
 }
@@ -103,7 +105,7 @@ RoundingDivide(
 static
 VOID
 GetDriverName(
-    IN PDISKENTRY DiskEntry)
+    _In_ PDISKENTRY DiskEntry)
 {
     RTL_QUERY_REGISTRY_TABLE QueryTable[2];
     WCHAR KeyName[32];
@@ -130,85 +132,6 @@ GetDriverName(
     if (!NT_SUCCESS(Status))
     {
         DPRINT1("RtlQueryRegistryValues() failed (Status %lx)\n", Status);
-    }
-}
-
-static
-VOID
-AssignDriveLetters(
-    IN PPARTLIST List)
-{
-    PDISKENTRY DiskEntry;
-    PPARTENTRY PartEntry;
-    PLIST_ENTRY Entry1;
-    PLIST_ENTRY Entry2;
-    WCHAR Letter;
-
-    Letter = L'C';
-
-    /* Assign drive letters to primary partitions */
-    for (Entry1 = List->DiskListHead.Flink;
-         Entry1 != &List->DiskListHead;
-         Entry1 = Entry1->Flink)
-    {
-        DiskEntry = CONTAINING_RECORD(Entry1, DISKENTRY, ListEntry);
-
-        for (Entry2 = DiskEntry->PrimaryPartListHead.Flink;
-             Entry2 != &DiskEntry->PrimaryPartListHead;
-             Entry2 = Entry2->Flink)
-        {
-            PartEntry = CONTAINING_RECORD(Entry2, PARTENTRY, ListEntry);
-
-            PartEntry->DriveLetter = 0;
-
-            if (PartEntry->IsPartitioned &&
-                !IsContainerPartition(PartEntry->PartitionType))
-            {
-                ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
-
-                if (IsRecognizedPartition(PartEntry->PartitionType) ||
-                    PartEntry->SectorCount.QuadPart != 0LL)
-                {
-                    if (Letter <= L'Z')
-                    {
-                        PartEntry->DriveLetter = Letter;
-                        Letter++;
-                    }
-                }
-            }
-        }
-    }
-
-    /* Assign drive letters to logical drives */
-    for (Entry1 = List->DiskListHead.Flink;
-         Entry1 != &List->DiskListHead;
-         Entry1 = Entry1->Flink)
-    {
-        DiskEntry = CONTAINING_RECORD(Entry1, DISKENTRY, ListEntry);
-
-        for (Entry2 = DiskEntry->LogicalPartListHead.Flink;
-             Entry2 != &DiskEntry->LogicalPartListHead;
-             Entry2 = Entry2->Flink)
-        {
-            PartEntry = CONTAINING_RECORD(Entry2, PARTENTRY, ListEntry);
-
-            PartEntry->DriveLetter = 0;
-
-            if (PartEntry->IsPartitioned)
-            {
-                ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
-
-                if (IsRecognizedPartition(PartEntry->PartitionType) ||
-                    PartEntry->SectorCount.QuadPart != 0LL)
-                {
-                    if (Letter <= L'Z')
-                    {
-                        PartEntry->DriveLetter = Letter;
-                        Letter++;
-                    }
-                }
-            }
-        }
     }
 }
 
@@ -635,6 +558,9 @@ InsertDiskRegion(
     return TRUE;
 }
 
+/****
+ ** VOLUME-specific partly (for the FS-specific fields)
+ ****/
 static
 PPARTENTRY
 CreateInsertBlankRegion(
@@ -660,8 +586,7 @@ CreateInsertBlankRegion(
     NewPartEntry->LogicalPartition = LogicalSpace;
     NewPartEntry->IsPartitioned = FALSE;
     NewPartEntry->PartitionType = PARTITION_ENTRY_UNUSED;
-    NewPartEntry->FormatState = Unformatted;
-    NewPartEntry->FileSystem[0] = L'\0';
+    NewPartEntry->Volume = NULL;
 
     DPRINT1("First Sector : %I64u\n", NewPartEntry->StartSector.QuadPart);
     DPRINT1("Last Sector  : %I64u\n", NewPartEntry->StartSector.QuadPart + NewPartEntry->SectorCount.QuadPart - 1);
@@ -673,6 +598,9 @@ CreateInsertBlankRegion(
     return NewPartEntry;
 }
 
+/****
+ ** VOLUME-specific partly (for the FS-specific fields)
+ ****/
 static
 BOOLEAN
 InitializePartitionEntry(
@@ -733,8 +661,7 @@ InitializePartitionEntry(
                                                             PartEntry->SectorCount.QuadPart);
     ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
 
-    PartEntry->FormatState = Unformatted;
-    PartEntry->FileSystem[0] = L'\0';
+    PartEntry->Volume = NULL; // Or an "empty" volume?
     // PartEntry->AutoCreate = AutoCreate;
     PartEntry->BootIndicator = FALSE;
 
@@ -746,6 +673,9 @@ InitializePartitionEntry(
 }
 
 
+/****
+ ** VOLUME-specific partly (for the FS recognition)
+ ****/
 static
 VOID
 AddPartitionToDisk(
@@ -754,16 +684,8 @@ AddPartitionToDisk(
     IN ULONG PartitionIndex,
     IN BOOLEAN LogicalPartition)
 {
-    NTSTATUS Status;
     PPARTITION_INFORMATION PartitionInfo;
     PPARTENTRY PartEntry;
-    HANDLE PartitionHandle;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    IO_STATUS_BLOCK IoStatusBlock;
-    WCHAR PathBuffer[MAX_PATH];
-    UNICODE_STRING Name;
-    UCHAR LabelBuffer[sizeof(FILE_FS_VOLUME_INFORMATION) + 256 * sizeof(WCHAR)];
-    PFILE_FS_VOLUME_INFORMATION LabelInfo = (PFILE_FS_VOLUME_INFORMATION)LabelBuffer;
 
     PartitionInfo = &DiskEntry->LayoutBuffer->PartitionEntry[PartitionIndex];
 
@@ -793,145 +715,36 @@ AddPartitionToDisk(
     PartEntry->PartitionNumber = PartitionInfo->PartitionNumber;
     PartEntry->PartitionIndex = PartitionIndex;
 
-    /* Specify the partition as initially unformatted */
-    PartEntry->FormatState = Unformatted;
-    PartEntry->FileSystem[0] = L'\0';
-
-    /* Initialize the partition volume label */
-    RtlZeroMemory(PartEntry->VolumeLabel, sizeof(PartEntry->VolumeLabel));
+    /* No volume initially */
+    PartEntry->Volume = NULL;
 
     if (IsContainerPartition(PartEntry->PartitionType))
     {
-        PartEntry->FormatState = Unformatted;
+        if (!LogicalPartition && DiskEntry->ExtendedPartition == NULL)
+        {
+            ASSERT(PartEntry->IsPartitioned &&
+                   !PartEntry->LogicalPartition &&
+                   IsContainerPartition(PartEntry->PartitionType));
 
-        if (LogicalPartition == FALSE && DiskEntry->ExtendedPartition == NULL)
             DiskEntry->ExtendedPartition = PartEntry;
+        }
     }
     else if (IsRecognizedPartition(PartEntry->PartitionType))
     {
+        NTSTATUS Status;
+
         ASSERT(PartitionInfo->RecognizedPartition);
         ASSERT(PartEntry->IsPartitioned && PartEntry->PartitionNumber != 0);
 
-        /* Try to open the volume so as to mount it */
-        RtlStringCchPrintfW(PathBuffer, ARRAYSIZE(PathBuffer),
-                            L"\\Device\\Harddisk%lu\\Partition%lu",
-                            DiskEntry->DiskNumber,
-                            PartEntry->PartitionNumber);
-        RtlInitUnicodeString(&Name, PathBuffer);
-
-        InitializeObjectAttributes(&ObjectAttributes,
-                                   &Name,
-                                   OBJ_CASE_INSENSITIVE,
-                                   NULL,
-                                   NULL);
-
-        PartitionHandle = NULL;
-        Status = NtOpenFile(&PartitionHandle,
-                            FILE_READ_DATA | SYNCHRONIZE,
-                            &ObjectAttributes,
-                            &IoStatusBlock,
-                            FILE_SHARE_READ | FILE_SHARE_WRITE,
-                            FILE_SYNCHRONOUS_IO_NONALERT);
-        if (!NT_SUCCESS(Status))
-        {
-            DPRINT1("NtOpenFile() failed, Status 0x%08lx\n", Status);
-        }
-
-        if (PartitionHandle)
-        {
-            ASSERT(NT_SUCCESS(Status));
-
-            /* We don't have a FS, try to guess one */
-            Status = InferFileSystem(NULL, PartitionHandle,
-                                     PartEntry->FileSystem,
-                                     sizeof(PartEntry->FileSystem));
-            if (!NT_SUCCESS(Status))
-                DPRINT1("InferFileSystem() failed, Status 0x%08lx\n", Status);
-        }
-        if (*PartEntry->FileSystem)
-        {
-            ASSERT(PartitionHandle);
-
-            /*
-             * Handle partition mounted with RawFS: it is
-             * either unformatted or has an unknown format.
-             */
-            if (wcsicmp(PartEntry->FileSystem, L"RAW") == 0)
-            {
-                /*
-                 * True unformatted partitions on NT are created with their
-                 * partition type set to either one of the following values,
-                 * and are mounted with RawFS. This is done this way since we
-                 * are assured to have FAT support, which is the only FS that
-                 * uses these partition types. Therefore, having a partition
-                 * mounted with RawFS and with these partition types means that
-                 * the FAT FS was unable to mount it beforehand and thus the
-                 * partition is unformatted.
-                 * However, any partition mounted by RawFS that does NOT have
-                 * any of these partition types must be considered as having
-                 * an unknown format.
-                 */
-                if (PartEntry->PartitionType == PARTITION_FAT_12 ||
-                    PartEntry->PartitionType == PARTITION_FAT_16 ||
-                    PartEntry->PartitionType == PARTITION_HUGE   ||
-                    PartEntry->PartitionType == PARTITION_XINT13 ||
-                    PartEntry->PartitionType == PARTITION_FAT32  ||
-                    PartEntry->PartitionType == PARTITION_FAT32_XINT13)
-                {
-                    PartEntry->FormatState = Unformatted;
-                }
-                else
-                {
-                    /* Close the partition before dismounting */
-                    NtClose(PartitionHandle);
-                    PartitionHandle = NULL;
-                    /*
-                     * Dismount the partition since RawFS owns it, and set its
-                     * format to unknown (may or may not be actually formatted).
-                     */
-                    DismountVolume(PartEntry);
-                    PartEntry->FormatState = UnknownFormat;
-                    PartEntry->FileSystem[0] = L'\0';
-                }
-            }
-            else
-            {
-                PartEntry->FormatState = Preformatted;
-            }
-        }
-        else
-        {
-            PartEntry->FormatState = UnknownFormat;
-        }
-
-        /* Retrieve the partition volume label */
-        if (PartitionHandle)
-        {
-            Status = NtQueryVolumeInformationFile(PartitionHandle,
-                                                  &IoStatusBlock,
-                                                  &LabelBuffer,
-                                                  sizeof(LabelBuffer),
-                                                  FileFsVolumeInformation);
-            if (NT_SUCCESS(Status))
-            {
-                /* Copy the (possibly truncated) volume label and NULL-terminate it */
-                RtlStringCbCopyNW(PartEntry->VolumeLabel, sizeof(PartEntry->VolumeLabel),
-                                  LabelInfo->VolumeLabel, LabelInfo->VolumeLabelLength);
-            }
-            else
-            {
-                DPRINT1("NtQueryVolumeInformationFile() failed, Status 0x%08lx\n", Status);
-            }
-        }
-
-        /* Close the partition */
-        if (PartitionHandle)
-            NtClose(PartitionHandle);
+        /* Attach a volume */
+        PartEntry->Volume = TempAttachVolumeToPartition(PartEntry);
+        ASSERT(PartEntry->Volume);
+        Status = DetectFileSystem(PartEntry);
     }
     else
     {
-        /* Unknown partition, hence unknown format (may or may not be actually formatted) */
-        PartEntry->FormatState = UnknownFormat;
+        // /* Unknown partition, hence unknown format (may or may not be actually formatted) */
+        // PartEntry->FormatState = UnknownFormat;
     }
 
     InsertDiskRegion(DiskEntry, PartEntry, LogicalPartition);
@@ -1065,10 +878,7 @@ ScanForUnpartitionedDiskSpace(
                                                    SectorCount,
                                                    TRUE);
             if (NewPartEntry == NULL)
-            {
                 DPRINT1("Failed to create a new empty region for full extended partition space!\n");
-                return;
-            }
 
             return;
         }
@@ -1301,6 +1111,9 @@ UpdateHwDiskNumbers(
     }
 }
 
+/****
+ ** VOLUME-specific partly (for the FS recognition)
+ ****/
 static
 VOID
 AddDiskToList(
@@ -1550,17 +1363,31 @@ AddDiskToList(
                                       (ULONGLONG)DiskGeometry.TracksPerCylinder *
                                       (ULONGLONG)DiskGeometry.SectorsPerTrack;
 
+#if 1
     DiskEntry->SectorAlignment = DiskGeometry.SectorsPerTrack;
     DiskEntry->CylinderAlignment = DiskGeometry.TracksPerCylinder *
                                    DiskGeometry.SectorsPerTrack;
+#else
+    // In diskpart... is it correct?
+    DiskEntry->SectorAlignment = (1024 * 1024) / DiskGeometry.BytesPerSector;
+    DiskEntry->CylinderAlignment = (1024 * 1024) / DiskGeometry.BytesPerSector;
+#endif
 
     DPRINT("SectorCount %I64u\n", DiskEntry->SectorCount.QuadPart);
     DPRINT("SectorAlignment %lu\n", DiskEntry->SectorAlignment);
+    DPRINT("CylinderAlignment: %lu\n", DiskEntry->CylinderAlignment);
 
     DiskEntry->DiskNumber = DiskNumber;
     DiskEntry->Port = ScsiAddress.PortNumber;
+#if 1
     DiskEntry->Bus = ScsiAddress.PathId;
     DiskEntry->Id = ScsiAddress.TargetId;
+#else
+    // In diskpart... Do we want to store the full SCSI address?
+    DiskEntry->PathId = ScsiAddress.PathId;
+    DiskEntry->TargetId = ScsiAddress.TargetId;
+    DiskEntry->Lun = ScsiAddress.Lun;
+#endif
 
     GetDriverName(DiskEntry);
     /*
@@ -1827,7 +1654,8 @@ GetActiveDiskPartition(
 
             DPRINT1("Found active system partition %lu in disk %lu, drive letter %C\n",
                     PartEntry->PartitionNumber, DiskEntry->DiskNumber,
-                    (PartEntry->DriveLetter == 0) ? L'-' : PartEntry->DriveLetter);
+                    (!PartEntry->Volume || PartEntry->Volume->DriveLetter == 0)
+                        ? L'-' : PartEntry->Volume->DriveLetter);
             break;
         }
     }
@@ -2203,192 +2031,374 @@ SelectPartition(
     return PartEntry;
 }
 
-PPARTENTRY
-GetNextPartition(
-    IN PPARTLIST List,
-    IN PPARTENTRY CurrentPart OPTIONAL)
-{
-    PLIST_ENTRY DiskListEntry;
-    PLIST_ENTRY PartListEntry;
-    PDISKENTRY CurrentDisk;
 
-    /* Fail if no disks are available */
-    if (IsListEmpty(&List->DiskListHead))
+/**
+ * @brief
+ * Retrieves the adjacent (next or previous) disk region in a given list.
+ *
+ * @param[in]   Direction
+ * TRUE or FALSE to search the next or previous entry, respectively.
+ *
+ * @return
+ * The disk region, or NULL if not found.
+ **/
+static
+PPARTENTRY
+GetAdjPartListEntry(
+    _In_ PLIST_ENTRY PartListHead,
+    _In_ PLIST_ENTRY PartListEntry,
+    _In_ BOOLEAN Direction)
+{
+    PartListEntry = (Direction ? PartListEntry->Flink : PartListEntry->Blink);
+    if (PartListEntry == PartListHead)
+        return NULL;
+    return CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
+}
+
+/**
+ * @brief
+ * Retrieves the adjacent (next or previous) disk region.
+ *
+ * @param[in]   Direction
+ * TRUE or FALSE to search the next or previous entry, respectively.
+ **/
+static
+PPARTENTRY
+GetAdjRegionEntry( // InList
+    _In_ PPARTENTRY PartEntry,
+    _In_ BOOLEAN Direction)
+{
+    PDISKENTRY DiskEntry = PartEntry->DiskEntry;
+    PLIST_ENTRY PartListHead;
+
+    /* In case of MBR disks only, check for logical partitions */
+    if ((DiskEntry->DiskStyle == PARTITION_STYLE_MBR) &&
+        (PartEntry->LogicalPartition))
+    {
+        PartListHead = &DiskEntry->LogicalPartListHead;
+    }
+    else
+    {
+        PartListHead = &DiskEntry->PrimaryPartListHead;
+    }
+
+    return GetAdjPartListEntry(PartListHead, &PartEntry->ListEntry, Direction);
+}
+
+
+/**
+ * @brief
+ * Finds the next disk region in order of appearance on a given disk,
+ * starting at the specified partition.
+ *
+ * For MBR disks, the function will go into extended partitions and
+ * enumerate the logical partitions inside.
+ *
+ * @param[in]   CurrentDisk
+ * If CurrentPart == NULL, specifies the disk where to find the first
+ * disk region. If CurrentPart != NULL, this parameter becomes optional:
+ * - If CurrentDisk == NULL, the enumeration restarts at the specified
+ *   CurrentPart using the disk where it resides.
+ * - If CurrentDisk != NULL, the enumeration restarts either at
+ *   CurrentPart, if it belongs to the same disk; otherwise, the
+ *   enumeration restarts at the first region of the specified disk.
+ *
+ * @param[in]   CurrentPart
+ * The disk region where to restart the search, or NULL for
+ * starting from the beginning of the specified disk.
+ *
+ * @return
+ * The next disk region, if any, or NULL when all regions on the disk
+ * have been enumerated.
+ *
+ * @see GetPrevDiskRegion().
+ **/
+static
+PPARTENTRY
+GetNextDiskRegion(
+    _In_opt_ PDISKENTRY CurrentDisk,
+    _In_opt_ PPARTENTRY CurrentPart)
+{
+    PLIST_ENTRY PartListHead;
+    PLIST_ENTRY PartListEntry;
+
+    /* Bail out if no parameters are given: cannot start search */
+    if (!CurrentDisk && !CurrentPart)
         return NULL;
 
-    /* Check for the next usable entry on the current partition's disk */
-    if (CurrentPart != NULL)
+    if (CurrentDisk && (!CurrentPart || (CurrentDisk != CurrentPart->DiskEntry)))
     {
-        CurrentDisk = CurrentPart->DiskEntry;
-
-        if (CurrentPart->LogicalPartition)
-        {
-            /* Logical partition */
-
-            PartListEntry = CurrentPart->ListEntry.Flink;
-            if (PartListEntry != &CurrentDisk->LogicalPartListHead)
-            {
-                /* Next logical partition */
-                CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-                return CurrentPart;
-            }
-            else
-            {
-                PartListEntry = CurrentDisk->ExtendedPartition->ListEntry.Flink;
-                if (PartListEntry != &CurrentDisk->PrimaryPartListHead)
-                {
-                    CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-                    return CurrentPart;
-                }
-            }
-        }
-        else
-        {
-            /* Primary or extended partition */
-
-            if (CurrentPart->IsPartitioned &&
-                IsContainerPartition(CurrentPart->PartitionType))
-            {
-                /* First logical partition */
-                PartListEntry = CurrentDisk->LogicalPartListHead.Flink;
-                if (PartListEntry != &CurrentDisk->LogicalPartListHead)
-                {
-                    CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-                    return CurrentPart;
-                }
-            }
-            else
-            {
-                /* Next primary partition */
-                PartListEntry = CurrentPart->ListEntry.Flink;
-                if (PartListEntry != &CurrentDisk->PrimaryPartListHead)
-                {
-                    CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-                    return CurrentPart;
-                }
-            }
-        }
+        /* We have a disk but either, no current partition, or it is present
+         * on a different disk: restart the search at the first disk region
+         * (in its primary partitions list) */
+        PartListEntry = &CurrentDisk->PrimaryPartListHead;
+        goto Quit;
     }
+    /* else: (CurrentPart && (!CurrentDisk || (CurrentDisk == CurrentPart->DiskEntry)))
+     * and continue the search with the next partition */
 
-    /* Search for the first partition entry on the next disk */
-    for (DiskListEntry = (CurrentPart ? CurrentDisk->ListEntry.Flink
-                                      : List->DiskListHead.Flink);
-         DiskListEntry != &List->DiskListHead;
-         DiskListEntry = DiskListEntry->Flink)
+    /* Get the current partition's disk */
+    ASSERT(CurrentPart);
+    CurrentDisk = CurrentPart->DiskEntry;
+
+    /* In case of MBR disks only, check for extended and logical partitions */
+    if ((CurrentDisk->DiskStyle == PARTITION_STYLE_MBR) &&
+        ((CurrentPart == CurrentDisk->ExtendedPartition) ||
+          CurrentPart->LogicalPartition))
     {
-        CurrentDisk = CONTAINING_RECORD(DiskListEntry, DISKENTRY, ListEntry);
+        PartListHead = &CurrentDisk->LogicalPartListHead;
 
-        if (CurrentDisk->DiskStyle == PARTITION_STYLE_GPT)
-        {
-            DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
-            continue;
-        }
+        /* If this is the single extended partition,
+         * go to the first logical partition */
+        if (CurrentPart == CurrentDisk->ExtendedPartition)
+            PartListEntry = PartListHead;
+        /* Else, this is a logical partition */
+        else
+            PartListEntry = &CurrentPart->ListEntry;
 
-        PartListEntry = CurrentDisk->PrimaryPartListHead.Flink;
-        if (PartListEntry != &CurrentDisk->PrimaryPartListHead)
+        /* The next entry is in the logical partitions list, check whether
+         * we reached its end.
+         * Note that if CurrentPart == CurrentDisk->ExtendedPartition,
+         * the logical partitions list should not be empty, but contain
+         * one single item for the empty space in the extended partition... */
+        CurrentPart = GetAdjPartListEntry(PartListHead, PartListEntry, TRUE);
+        if (CurrentPart)
         {
-            CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
+            /* We are getting either the first or next logical partition */
             return CurrentPart;
         }
+
+        /* We are at the end of the logical partitions list: go to
+         * the next (primary) partition following the extended one */
+        CurrentPart = CurrentDisk->ExtendedPartition;
     }
 
-    return NULL;
+    PartListEntry = &CurrentPart->ListEntry;
+
+Quit:
+    /* This is a primary partition, go to the next
+     * entry within the primary partitions list */
+    PartListHead = &CurrentDisk->PrimaryPartListHead;
+    return GetAdjPartListEntry(PartListHead, PartListEntry, TRUE);
+}
+
+/**
+ * @brief
+ * Finds the previous disk region in order of appearance on a given disk,
+ * starting at the specified partition.
+ *
+ * For MBR disks, the function will go into extended partitions and
+ * enumerate the logical partitions inside.
+ *
+ * @param[in]   CurrentDisk
+ * If CurrentPart == NULL, specifies the disk where to find the last
+ * disk region. If CurrentPart != NULL, this parameter becomes optional:
+ * - If CurrentDisk == NULL, the enumeration restarts at the specified
+ *   CurrentPart using the disk where it resides.
+ * - If CurrentDisk != NULL, the enumeration restarts either at
+ *   CurrentPart, if it belongs to the same disk; otherwise, the
+ *   enumeration restarts at the last region of the specified disk.
+ *
+ * @param[in]   CurrentPart
+ * The disk region where to restart the search, or NULL for
+ * starting from the end of the specified disk.
+ *
+ * @return
+ * The previous disk region, if any, or NULL when all regions on the disk
+ * have been enumerated.
+ *
+ * @see GetNextDiskRegion().
+ **/
+static
+PPARTENTRY
+GetPrevDiskRegion(
+    _In_opt_ PDISKENTRY CurrentDisk,
+    _In_opt_ PPARTENTRY CurrentPart)
+{
+    PLIST_ENTRY PartListHead;
+    PLIST_ENTRY PartListEntry;
+
+    /* Bail out if no parameters are given: cannot start search */
+    if (!CurrentDisk && !CurrentPart)
+        return NULL;
+
+    if (CurrentDisk && (!CurrentPart || (CurrentDisk != CurrentPart->DiskEntry)))
+    {
+        /* We have a disk but either, no current partition, or it is present
+         * on a different disk: restart the search at the last disk region
+         * (in its primary partitions list) */
+        PartListEntry = &CurrentDisk->PrimaryPartListHead;
+        goto Quit;
+    }
+    /* else: (CurrentPart && (!CurrentDisk || (CurrentDisk == CurrentPart->DiskEntry)))
+     * and continue the search with the previous partition */
+
+    /* Get the current partition's disk */
+    ASSERT(CurrentPart);
+    CurrentDisk = CurrentPart->DiskEntry;
+
+    PartListEntry = &CurrentPart->ListEntry;
+
+    /* In case of MBR disks only, check for logical partitions */
+    if ((CurrentDisk->DiskStyle == PARTITION_STYLE_MBR) &&
+        (CurrentPart->LogicalPartition))
+    {
+        /* The previous entry is in the logical partitions list,
+         * check whether we reached its end. */
+        PartListHead = &CurrentDisk->LogicalPartListHead;
+        CurrentPart = GetAdjPartListEntry(PartListHead, PartListEntry, FALSE);
+        if (!CurrentPart)
+        {
+            /* We are at the beginning of the logical partitions list:
+             * go back to the extended partition (it must be there since
+             * we had a logical partition) */
+            CurrentPart = CurrentDisk->ExtendedPartition;
+            ASSERT(CurrentPart);
+        }
+        /* Else, we are getting the previous logical partition */
+
+        return CurrentPart;
+    }
+
+Quit:
+    /* This is a primary partition, go to the previous
+     * entry within the primary partitions list */
+    PartListHead = &CurrentDisk->PrimaryPartListHead;
+    CurrentPart = GetAdjPartListEntry(PartListHead, PartListEntry, FALSE);
+
+    /* In case of MBR disks only, check for extended partition and look
+     * at the last logical region. If there are no logical regions,
+     * stay on the extended partition. */
+    if (CurrentPart &&
+        (CurrentDisk->DiskStyle == PARTITION_STYLE_MBR) &&
+        (CurrentPart == CurrentDisk->ExtendedPartition))
+    {
+        PPARTENTRY LastLogical;
+
+        PartListHead = &CurrentDisk->LogicalPartListHead;
+        LastLogical = GetAdjPartListEntry(PartListHead, PartListHead, FALSE);
+        if (LastLogical)
+            CurrentPart = LastLogical;
+    }
+
+    return CurrentPart;
 }
 
 PPARTENTRY
-GetPrevPartition(
-    IN PPARTLIST List,
-    IN PPARTENTRY CurrentPart OPTIONAL)
+GetAdjDiskRegion(
+    _In_opt_ PDISKENTRY CurrentDisk,
+    _In_opt_ PPARTENTRY CurrentPart,
+    _In_ BOOLEAN Direction)
 {
+    return (Direction ? GetNextDiskRegion : GetPrevDiskRegion)(CurrentDisk, CurrentPart);
+}
+
+
+typedef PPARTENTRY
+(*PGET_ADJ_DISK_REGION)(
+    _In_opt_ PDISKENTRY CurrentDisk,
+    _In_opt_ PPARTENTRY CurrentPart,
+    _In_ BOOLEAN Direction);
+
+/**
+ * @brief
+ * Finds the adjacent (next or previous) disk region in order of appearance
+ * on a given disk in the list, starting at the given current partition.
+
+ * For MBR disks, the function will go into extended partitions
+ * for enumerating the logical partitions inside.
+ *
+ * @param[in]   List
+ * The list of disks and partitions on the system.
+ *
+ * @param[in]   CurrentPart
+ * The disk region where to restart the search, or NULL for starting
+ * from either the beginning (first region in the first disk) or
+ * from the end (last region in the last disk).
+ *
+ * @param[in]   Direction
+ * TRUE or FALSE to search the next or previous entry, respectively.
+ *
+ * @return
+ * The next or the previous disk region, if any, or NULL when all
+ * regions have been enumerated.
+ **/
+PPARTENTRY
+GetAdjPartitionEx(
+    _In_ PPARTLIST List,
+    _In_opt_ PPARTENTRY CurrentPart,
+    _In_ BOOLEAN Direction,
+    _In_ PGET_ADJ_DISK_REGION pGetAdjDiskRegion)
+{
+    PLIST_ENTRY DiskListHead = &List->DiskListHead;
     PLIST_ENTRY DiskListEntry;
-    PLIST_ENTRY PartListEntry;
     PDISKENTRY CurrentDisk;
 
-    /* Fail if no disks are available */
-    if (IsListEmpty(&List->DiskListHead))
-        return NULL;
-
-    /* Check for the previous usable entry on the current partition's disk */
-    if (CurrentPart != NULL)
+    if (CurrentPart)
     {
+        /* Check for the adjacent entry on the current partition's disk */
         CurrentDisk = CurrentPart->DiskEntry;
+        CurrentPart = pGetAdjDiskRegion(/*CurrentDisk*/ NULL, CurrentPart, Direction);
+        if (CurrentPart)
+            goto Quit;
 
-        if (CurrentPart->LogicalPartition)
-        {
-            /* Logical partition */
-
-            PartListEntry = CurrentPart->ListEntry.Blink;
-            if (PartListEntry != &CurrentDisk->LogicalPartListHead)
-            {
-                /* Previous logical partition */
-                CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-            }
-            else
-            {
-                /* Extended partition */
-                CurrentPart = CurrentDisk->ExtendedPartition;
-            }
-            return CurrentPart;
-        }
-        else
-        {
-            /* Primary or extended partition */
-
-            PartListEntry = CurrentPart->ListEntry.Blink;
-            if (PartListEntry != &CurrentDisk->PrimaryPartListHead)
-            {
-                CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-
-                if (CurrentPart->IsPartitioned &&
-                    IsContainerPartition(CurrentPart->PartitionType))
-                {
-                    PartListEntry = CurrentDisk->LogicalPartListHead.Blink;
-                    CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-                }
-
-                return CurrentPart;
-            }
-        }
+        /* Otherwise, check the next or previous disk */
+        ASSERT(!IsListEmpty(DiskListHead));
+        DiskListEntry = &CurrentDisk->ListEntry;
+    }
+    else
+    {
+        /* Fail if no disks are available; otherwise,
+         * check the first or last disk */
+        if (IsListEmpty(DiskListHead))
+            return NULL;
+        DiskListEntry = DiskListHead;
     }
 
-    /* Search for the last partition entry on the previous disk */
-    for (DiskListEntry = (CurrentPart ? CurrentDisk->ListEntry.Blink
-                                      : List->DiskListHead.Blink);
-         DiskListEntry != &List->DiskListHead;
-         DiskListEntry = DiskListEntry->Blink)
+#define ADJ_LIST_ENTRY(ListEntry, Direction) \
+    ((ListEntry) = ((Direction) ? (ListEntry)->Flink : (ListEntry)->Blink))
+    /* Search for the first (last) partition entry on the next (previous) disk */
+    while (ADJ_LIST_ENTRY(DiskListEntry, Direction) != DiskListHead)
     {
         CurrentDisk = CONTAINING_RECORD(DiskListEntry, DISKENTRY, ListEntry);
 
+        DPRINT("Disk #%d\n", CurrentDisk->DiskNumber);
         if (CurrentDisk->DiskStyle == PARTITION_STYLE_GPT)
         {
             DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
-            continue;
+            // continue;
         }
 
-        PartListEntry = CurrentDisk->PrimaryPartListHead.Blink;
-        if (PartListEntry != &CurrentDisk->PrimaryPartListHead)
-        {
-            CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-
-            if (CurrentPart->IsPartitioned &&
-                IsContainerPartition(CurrentPart->PartitionType))
-            {
-                PartListEntry = CurrentDisk->LogicalPartListHead.Blink;
-                if (PartListEntry != &CurrentDisk->LogicalPartListHead)
-                {
-                    CurrentPart = CONTAINING_RECORD(PartListEntry, PARTENTRY, ListEntry);
-                    return CurrentPart;
-                }
-            }
-            else
-            {
-                return CurrentPart;
-            }
-        }
+        CurrentPart = pGetAdjDiskRegion(CurrentDisk, NULL, Direction);
+        if (CurrentPart)
+            break;
     }
+#undef ADJ_LIST_ENTRY
 
-    return NULL;
+Quit:
+    if (CurrentPart)
+    {
+        DPRINT("   %s Partition #%d, index %d - Type 0x%02x, IsPartitioned = %s, IsNew = %s, AutoCreate = %s, FormatState = %lu\n",
+              (CurrentPart->LogicalPartition ? "Logical" : "Primary"),
+               CurrentPart->PartitionNumber, CurrentPart->PartitionIndex,
+               CurrentPart->PartitionType,
+               CurrentPart->IsPartitioned ? "TRUE" : "FALSE",
+               CurrentPart->New ? "Yes" : "No",
+               CurrentPart->AutoCreate ? "Yes" : "No",
+               CurrentPart->Volume ? CurrentPart->Volume->FormatState : -1);
+    }
+    return CurrentPart;
 }
+
+PPARTENTRY
+GetAdjPartition(
+    _In_ PPARTLIST List,
+    _In_opt_ PPARTENTRY CurrentPart,
+    _In_ BOOLEAN Direction)
+{
+    return GetAdjPartitionEx(List, CurrentPart, Direction, GetAdjDiskRegion);
+}
+
 
 // static
 FORCEINLINE
@@ -2413,8 +2423,8 @@ IsSamePrimaryLayoutEntry(
     IN PDISKENTRY DiskEntry,
     IN PPARTENTRY PartEntry)
 {
-    if (PartitionInfo->StartingOffset.QuadPart == PartEntry->StartSector.QuadPart * DiskEntry->BytesPerSector &&
-        PartitionInfo->PartitionLength.QuadPart == PartEntry->SectorCount.QuadPart * DiskEntry->BytesPerSector)
+    if ((PartitionInfo->StartingOffset.QuadPart == PartEntry->StartSector.QuadPart * DiskEntry->BytesPerSector) &&
+        (PartitionInfo->PartitionLength.QuadPart == PartEntry->SectorCount.QuadPart * DiskEntry->BytesPerSector))
 //        PartitionInfo->PartitionType == PartEntry->PartitionType
     {
         return TRUE;
@@ -2423,59 +2433,39 @@ IsSamePrimaryLayoutEntry(
     return FALSE;
 }
 
+
+/**
+ * @brief
+ * Counts the number of partitioned disk regions in a given disk partition list.
+ **/
 static
 ULONG
-GetPrimaryPartitionCount(
-    IN PDISKENTRY DiskEntry)
+GetPartitionCount(
+    _In_ PLIST_ENTRY PartListHead)
 {
     PLIST_ENTRY Entry;
     PPARTENTRY PartEntry;
     ULONG Count = 0;
 
-    if (DiskEntry->DiskStyle == PARTITION_STYLE_GPT)
-    {
-        DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
-        return 0;
-    }
-
-    for (Entry = DiskEntry->PrimaryPartListHead.Flink;
-         Entry != &DiskEntry->PrimaryPartListHead;
+    for (Entry = PartListHead->Flink;
+         Entry != PartListHead;
          Entry = Entry->Flink)
     {
         PartEntry = CONTAINING_RECORD(Entry, PARTENTRY, ListEntry);
         if (PartEntry->IsPartitioned)
-            Count++;
+            ++Count;
     }
 
     return Count;
 }
 
-static
-ULONG
-GetLogicalPartitionCount(
-    IN PDISKENTRY DiskEntry)
-{
-    PLIST_ENTRY ListEntry;
-    PPARTENTRY PartEntry;
-    ULONG Count = 0;
+#define GetPrimaryPartitionCount(DiskEntry) \
+    GetPartitionCount(&(DiskEntry)->PrimaryPartListHead)
 
-    if (DiskEntry->DiskStyle == PARTITION_STYLE_GPT)
-    {
-        DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
-        return 0;
-    }
+#define GetLogicalPartitionCount(DiskEntry) \
+    (((DiskEntry)->DiskStyle == PARTITION_STYLE_MBR) \
+        ? GetPartitionCount(&(DiskEntry)->LogicalPartListHead) : 0)
 
-    for (ListEntry = DiskEntry->LogicalPartListHead.Flink;
-         ListEntry != &DiskEntry->LogicalPartListHead;
-         ListEntry = ListEntry->Flink)
-    {
-        PartEntry = CONTAINING_RECORD(ListEntry, PARTENTRY, ListEntry);
-        if (PartEntry->IsPartitioned)
-            Count++;
-    }
-
-    return Count;
-}
 
 static
 BOOLEAN
@@ -2723,73 +2713,22 @@ UpdateDiskLayout(
 #endif
 }
 
-static
+/**
+ * @param[in]   Direction
+ * TRUE or FALSE to search the next or previous entry, respectively.
+ **/
+static inline
 PPARTENTRY
-GetPrevUnpartitionedEntry(
-    IN PPARTENTRY PartEntry)
+GetAdjUnpartitionedEntry(
+    _In_ PPARTENTRY PartEntry,
+    _In_ BOOLEAN Direction)
 {
-    PDISKENTRY DiskEntry = PartEntry->DiskEntry;
-    PPARTENTRY PrevPartEntry;
-    PLIST_ENTRY ListHead;
-
-    if (DiskEntry->DiskStyle == PARTITION_STYLE_GPT)
+    PartEntry = GetAdjRegionEntry(PartEntry, Direction);
+    if (PartEntry && !PartEntry->IsPartitioned)
     {
-        DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
-        return NULL;
+        ASSERT(PartEntry->PartitionType == PARTITION_ENTRY_UNUSED);
+        return PartEntry;
     }
-
-    if (PartEntry->LogicalPartition)
-        ListHead = &DiskEntry->LogicalPartListHead;
-    else
-        ListHead = &DiskEntry->PrimaryPartListHead;
-
-    if (PartEntry->ListEntry.Blink != ListHead)
-    {
-        PrevPartEntry = CONTAINING_RECORD(PartEntry->ListEntry.Blink,
-                                          PARTENTRY,
-                                          ListEntry);
-        if (!PrevPartEntry->IsPartitioned)
-        {
-            ASSERT(PrevPartEntry->PartitionType == PARTITION_ENTRY_UNUSED);
-            return PrevPartEntry;
-        }
-    }
-
-    return NULL;
-}
-
-static
-PPARTENTRY
-GetNextUnpartitionedEntry(
-    IN PPARTENTRY PartEntry)
-{
-    PDISKENTRY DiskEntry = PartEntry->DiskEntry;
-    PPARTENTRY NextPartEntry;
-    PLIST_ENTRY ListHead;
-
-    if (DiskEntry->DiskStyle == PARTITION_STYLE_GPT)
-    {
-        DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
-        return NULL;
-    }
-
-    if (PartEntry->LogicalPartition)
-        ListHead = &DiskEntry->LogicalPartListHead;
-    else
-        ListHead = &DiskEntry->PrimaryPartListHead;
-
-    if (PartEntry->ListEntry.Flink != ListHead)
-    {
-        NextPartEntry = CONTAINING_RECORD(PartEntry->ListEntry.Flink,
-                                          PARTENTRY,
-                                          ListEntry);
-        if (!NextPartEntry->IsPartitioned)
-        {
-            ASSERT(NextPartEntry->PartitionType == PARTITION_ENTRY_UNUSED);
-            return NextPartEntry;
-        }
-    }
-
     return NULL;
 }
 
@@ -2973,7 +2912,12 @@ CreateExtendedPartition(
 
     // FIXME? Possibly to make GetNextUnformattedPartition work (i.e. skip the extended partition container)
     PartEntry->New = FALSE;
-    PartEntry->FormatState = Formatted;
+    // PartEntry->FormatState = Formatted;
+    PartEntry->Volume = NULL;
+
+    ASSERT(PartEntry->IsPartitioned &&
+           !PartEntry->LogicalPartition &&
+           IsContainerPartition(PartEntry->PartitionType));
 
     PartEntry->DiskEntry->ExtendedPartition = PartEntry;
 
@@ -2983,113 +2927,6 @@ CreateExtendedPartition(
     AssignDriveLetters(List);
 
     return TRUE;
-}
-
-NTSTATUS
-DismountVolume(
-    IN PPARTENTRY PartEntry)
-{
-    NTSTATUS Status;
-    NTSTATUS LockStatus;
-    UNICODE_STRING Name;
-    OBJECT_ATTRIBUTES ObjectAttributes;
-    IO_STATUS_BLOCK IoStatusBlock;
-    HANDLE PartitionHandle;
-    WCHAR Buffer[MAX_PATH];
-
-    /* Check whether the partition is valid and was mounted by the system */
-    if (!PartEntry->IsPartitioned ||
-        IsContainerPartition(PartEntry->PartitionType)   ||
-        !IsRecognizedPartition(PartEntry->PartitionType) ||
-        PartEntry->FormatState == UnknownFormat ||
-        // NOTE: If FormatState == Unformatted but *FileSystem != 0 this means
-        // it has been usually mounted with RawFS and thus needs to be dismounted.
-        !*PartEntry->FileSystem ||
-        PartEntry->PartitionNumber == 0)
-    {
-        /* The partition is not mounted, so just return success */
-        return STATUS_SUCCESS;
-    }
-
-    ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
-
-    /* Open the volume */
-    RtlStringCchPrintfW(Buffer, ARRAYSIZE(Buffer),
-                        L"\\Device\\Harddisk%lu\\Partition%lu",
-                        PartEntry->DiskEntry->DiskNumber,
-                        PartEntry->PartitionNumber);
-    RtlInitUnicodeString(&Name, Buffer);
-
-    InitializeObjectAttributes(&ObjectAttributes,
-                               &Name,
-                               OBJ_CASE_INSENSITIVE,
-                               NULL,
-                               NULL);
-
-    Status = NtOpenFile(&PartitionHandle,
-                        GENERIC_READ | GENERIC_WRITE | SYNCHRONIZE,
-                        &ObjectAttributes,
-                        &IoStatusBlock,
-                        FILE_SHARE_READ | FILE_SHARE_WRITE,
-                        FILE_SYNCHRONOUS_IO_NONALERT);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("ERROR: Cannot open volume %wZ for dismounting! (Status 0x%lx)\n", &Name, Status);
-        return Status;
-    }
-
-    /* Lock the volume */
-    LockStatus = NtFsControlFile(PartitionHandle,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 &IoStatusBlock,
-                                 FSCTL_LOCK_VOLUME,
-                                 NULL,
-                                 0,
-                                 NULL,
-                                 0);
-    if (!NT_SUCCESS(LockStatus))
-    {
-        DPRINT1("WARNING: Failed to lock volume! Operations may fail! (Status 0x%lx)\n", LockStatus);
-    }
-
-    /* Dismount the volume */
-    Status = NtFsControlFile(PartitionHandle,
-                             NULL,
-                             NULL,
-                             NULL,
-                             &IoStatusBlock,
-                             FSCTL_DISMOUNT_VOLUME,
-                             NULL,
-                             0,
-                             NULL,
-                             0);
-    if (!NT_SUCCESS(Status))
-    {
-        DPRINT1("Failed to unmount volume (Status 0x%lx)\n", Status);
-    }
-
-    /* Unlock the volume */
-    LockStatus = NtFsControlFile(PartitionHandle,
-                                 NULL,
-                                 NULL,
-                                 NULL,
-                                 &IoStatusBlock,
-                                 FSCTL_UNLOCK_VOLUME,
-                                 NULL,
-                                 0,
-                                 NULL,
-                                 0);
-    if (!NT_SUCCESS(LockStatus))
-    {
-        DPRINT1("Failed to unlock volume (Status 0x%lx)\n", LockStatus);
-    }
-
-    /* Close the volume */
-    NtClose(PartitionHandle);
-
-    return Status;
 }
 
 BOOLEAN
@@ -3148,8 +2985,8 @@ DeletePartition(
     /* Adjust the unpartitioned disk space entries */
 
     /* Get pointer to previous and next unpartitioned entries */
-    PrevPartEntry = GetPrevUnpartitionedEntry(PartEntry);
-    NextPartEntry = GetNextUnpartitionedEntry(PartEntry);
+    PrevPartEntry = GetAdjUnpartitionedEntry(PartEntry, FALSE);
+    NextPartEntry = GetAdjUnpartitionedEntry(PartEntry, TRUE);
 
     if (PrevPartEntry != NULL && NextPartEntry != NULL)
     {
@@ -3208,10 +3045,10 @@ DeletePartition(
         // PartEntry->PartitionIndex = 0;
         PartEntry->BootIndicator = FALSE;
         PartEntry->PartitionType = PARTITION_ENTRY_UNUSED;
-        PartEntry->FormatState = Unformatted;
-        PartEntry->FileSystem[0] = L'\0';
-        PartEntry->DriveLetter = 0;
-        RtlZeroMemory(PartEntry->VolumeLabel, sizeof(PartEntry->VolumeLabel));
+
+        if (PartEntry->Volume)
+            RtlFreeHeap(ProcessHeap, 0, PartEntry->Volume); // RemoveVolume()
+        PartEntry->Volume = NULL;
 
         /* Optionally return the freed region */
         if (FreeRegion)
@@ -3229,6 +3066,8 @@ BOOLEAN
 IsSupportedActivePartition(
     IN PPARTENTRY PartEntry)
 {
+    PVOLENTRY VolumeEntry;
+
     /* Check the type and the file system of this partition */
 
     /*
@@ -3239,6 +3078,13 @@ IsSupportedActivePartition(
     {
         DPRINT1("System partition %lu in disk %lu is an extended partition container?!\n",
                 PartEntry->PartitionNumber, PartEntry->DiskEntry->DiskNumber);
+        return FALSE;
+    }
+
+    VolumeEntry = PartEntry->Volume;
+    if (!VolumeEntry)
+    {
+        /* Still no recognizable volume mounted: partition not supported */
         return FALSE;
     }
 
@@ -3258,21 +3104,20 @@ IsSupportedActivePartition(
      * NOTE also that for those architectures looking for a
      * partition boot indicator is insufficient.
      */
-    if (PartEntry->FormatState == Unformatted)
+    if (VolumeEntry->FormatState == Unformatted)
     {
         /* If this partition is mounted, it would use RawFS ("RAW") */
         return TRUE;
     }
-    else if ((PartEntry->FormatState == Preformatted) ||
-             (PartEntry->FormatState == Formatted))
+    else if (VolumeEntry->FormatState == Formatted)
     {
-        ASSERT(*PartEntry->FileSystem);
+        ASSERT(*VolumeEntry->FileSystem);
 
         /* NOTE: Please keep in sync with the RegisteredFileSystems list! */
-        if (wcsicmp(PartEntry->FileSystem, L"FAT")   == 0 ||
-            wcsicmp(PartEntry->FileSystem, L"FAT32") == 0 ||
-         // wcsicmp(PartEntry->FileSystem, L"NTFS")  == 0 ||
-            wcsicmp(PartEntry->FileSystem, L"BTRFS") == 0)
+        if (wcsicmp(VolumeEntry->FileSystem, L"FAT")   == 0 ||
+            wcsicmp(VolumeEntry->FileSystem, L"FAT32") == 0 ||
+         // wcsicmp(VolumeEntry->FileSystem, L"NTFS")  == 0 ||
+            wcsicmp(VolumeEntry->FileSystem, L"BTRFS") == 0)
         {
             return TRUE;
         }
@@ -3280,13 +3125,13 @@ IsSupportedActivePartition(
         {
             // WARNING: We cannot write on this FS yet!
             DPRINT1("Recognized file system '%S' that doesn't have write support yet!\n",
-                    PartEntry->FileSystem);
+                    VolumeEntry->FileSystem);
             return FALSE;
         }
     }
-    else // if (PartEntry->FormatState == UnknownFormat)
+    else // if (VolumeEntry->FormatState == UnknownFormat)
     {
-        ASSERT(!*PartEntry->FileSystem);
+        ASSERT(!*VolumeEntry->FileSystem);
 
         DPRINT1("System partition %lu in disk %lu with no or unknown FS?!\n",
                 PartEntry->PartitionNumber, PartEntry->DiskEntry->DiskNumber);
@@ -3298,7 +3143,7 @@ IsSupportedActivePartition(
     if (PartEntry->PartitionType == PARTITION_IFS)
     {
         DPRINT1("Recognized file system '%S' that doesn't have write support yet!\n",
-                PartEntry->FileSystem);
+                VolumeEntry->FileSystem);
         return FALSE;
     }
 
@@ -3367,7 +3212,8 @@ FindSupportedSystemPartition(
         DPRINT1("Use the current system partition %lu in disk %lu, drive letter %C\n",
                 CandidatePartition->PartitionNumber,
                 CandidatePartition->DiskEntry->DiskNumber,
-                (CandidatePartition->DriveLetter == 0) ? L'-' : CandidatePartition->DriveLetter);
+                (!CandidatePartition->Volume || CandidatePartition->Volume->DriveLetter == 0)
+                    ? L'-' : CandidatePartition->Volume->DriveLetter);
 
         /* Return the candidate system partition */
         return CandidatePartition;
@@ -3516,7 +3362,8 @@ UseAlternativeDisk:
             DPRINT1("Use new first active system partition %lu in disk %lu, drive letter %C\n",
                     CandidatePartition->PartitionNumber,
                     CandidatePartition->DiskEntry->DiskNumber,
-                    (CandidatePartition->DriveLetter == 0) ? L'-' : CandidatePartition->DriveLetter);
+                    (!CandidatePartition->Volume || CandidatePartition->Volume->DriveLetter == 0)
+                        ? L'-' : CandidatePartition->Volume->DriveLetter);
 
             /* Return the candidate system partition */
             return CandidatePartition;
@@ -3556,7 +3403,8 @@ UseAlternativeDisk:
         DPRINT1("Use first active system partition %lu in disk %lu, drive letter %C\n",
                 CandidatePartition->PartitionNumber,
                 CandidatePartition->DiskEntry->DiskNumber,
-                (CandidatePartition->DriveLetter == 0) ? L'-' : CandidatePartition->DriveLetter);
+                (!CandidatePartition->Volume || CandidatePartition->Volume->DriveLetter == 0)
+                    ? L'-' : CandidatePartition->Volume->DriveLetter);
 
         /* Return the candidate system partition */
         return CandidatePartition;
@@ -3594,7 +3442,8 @@ UseAlternativePartition:
     DPRINT1("Use alternative active system partition %lu in disk %lu, drive letter %C\n",
             CandidatePartition->PartitionNumber,
             CandidatePartition->DiskEntry->DiskNumber,
-            (CandidatePartition->DriveLetter == 0) ? L'-' : CandidatePartition->DriveLetter);
+            (!CandidatePartition->Volume || CandidatePartition->Volume->DriveLetter == 0)
+                ? L'-' : CandidatePartition->Volume->DriveLetter);
 
     /* Return the candidate system partition */
     return CandidatePartition;
@@ -3942,10 +3791,10 @@ SetMountedDeviceValues(
                 ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
 
                 /* Assign a "\DosDevices\#:" mount point to this partition */
-                if (PartEntry->DriveLetter)
+                if (PartEntry->Volume && PartEntry->Volume->DriveLetter)
                 {
                     StartingOffset.QuadPart = PartEntry->StartSector.QuadPart * DiskEntry->BytesPerSector;
-                    if (!SetMountedDeviceValue(PartEntry->DriveLetter,
+                    if (!SetMountedDeviceValue(PartEntry->Volume->DriveLetter,
                                                DiskEntry->LayoutBuffer->Signature,
                                                StartingOffset))
                     {
@@ -3965,10 +3814,10 @@ SetMountedDeviceValues(
                 ASSERT(PartEntry->PartitionType != PARTITION_ENTRY_UNUSED);
 
                 /* Assign a "\DosDevices\#:" mount point to this partition */
-                if (PartEntry->DriveLetter)
+                if (PartEntry->Volume && PartEntry->Volume->DriveLetter)
                 {
                     StartingOffset.QuadPart = PartEntry->StartSector.QuadPart * DiskEntry->BytesPerSector;
-                    if (!SetMountedDeviceValue(PartEntry->DriveLetter,
+                    if (!SetMountedDeviceValue(PartEntry->Volume->DriveLetter,
                                                DiskEntry->LayoutBuffer->Signature,
                                                StartingOffset))
                     {
@@ -3999,122 +3848,171 @@ SetMBRPartitionType(
     DiskEntry->LayoutBuffer->PartitionEntry[PartEntry->PartitionIndex].RewritePartition = TRUE;
 }
 
-BOOLEAN
-GetNextUnformattedPartition(
-    IN PPARTLIST List,
-    OUT PDISKENTRY *pDiskEntry OPTIONAL,
-    OUT PPARTENTRY *pPartEntry)
+
+/**
+ * @brief
+ * Finds the next data partition in the disks-&-partitions list.
+ * Container-type (e.g. extended) partitions and empty disk regions
+ * are thus skipped.
+ * This allows to enumerate the partitions in a partition-scheme-independent
+ * linear way. NOTE that this does not guarantee they are listed in actual
+ * order of appearance on a given disk. For example for MBR disks, all
+ * _primary_ partitions are enumerated first, before _logical_ partitions.
+ **/
+#if 0
+PPARTENTRY
+EnumDataPartition(
+    _In_ PPARTLIST List)
 {
     PLIST_ENTRY Entry1, Entry2;
     PDISKENTRY DiskEntry;
     PPARTENTRY PartEntry;
 
+    /* Loop each available disk ... */
     for (Entry1 = List->DiskListHead.Flink;
          Entry1 != &List->DiskListHead;
          Entry1 = Entry1->Flink)
     {
-        DiskEntry = CONTAINING_RECORD(Entry1,
-                                      DISKENTRY,
-                                      ListEntry);
+        DiskEntry = CONTAINING_RECORD(Entry1, DISKENTRY, ListEntry);
 
+        DPRINT("Disk #%d\n", DiskEntry->DiskNumber);
         if (DiskEntry->DiskStyle == PARTITION_STYLE_GPT)
         {
             DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
             continue;
         }
 
+        /* ... and for each disk, loop each available partition */
+
+        /* First, the primary partitions */
         for (Entry2 = DiskEntry->PrimaryPartListHead.Flink;
              Entry2 != &DiskEntry->PrimaryPartListHead;
              Entry2 = Entry2->Flink)
         {
             PartEntry = CONTAINING_RECORD(Entry2, PARTENTRY, ListEntry);
-            if (PartEntry->IsPartitioned && PartEntry->New)
-            {
-                ASSERT(DiskEntry == PartEntry->DiskEntry);
-                if (pDiskEntry) *pDiskEntry = DiskEntry;
-                *pPartEntry = PartEntry;
-                return TRUE;
-            }
+            ASSERT(DiskEntry == PartEntry->DiskEntry);
+
+            DPRINT("   Primary Partition #%d, index %d - Type 0x%02x, IsLogical = %s, IsPartitioned = %s, IsNew = %s, AutoCreate = %s, FormatState = %lu\n",
+                   PartEntry->PartitionNumber, PartEntry->PartitionIndex,
+                   PartEntry->PartitionType, PartEntry->LogicalPartition ? "TRUE" : "FALSE",
+                   PartEntry->IsPartitioned ? "TRUE" : "FALSE",
+                   PartEntry->New ? "Yes" : "No",
+                   PartEntry->AutoCreate ? "Yes" : "No",
+                   PartEntry->FormatState);
+
+            if (PartEntry->IsPartitioned)
+                return PartEntry;
         }
 
+        /* Then, the logical partitions (present in the extended partition) */
         for (Entry2 = DiskEntry->LogicalPartListHead.Flink;
              Entry2 != &DiskEntry->LogicalPartListHead;
              Entry2 = Entry2->Flink)
         {
             PartEntry = CONTAINING_RECORD(Entry2, PARTENTRY, ListEntry);
-            if (PartEntry->IsPartitioned && PartEntry->New)
+            ASSERT(DiskEntry == PartEntry->DiskEntry);
+
+            DPRINT("   Logical Partition #%d, index %d - Type 0x%02x, IsLogical = %s, IsPartitioned = %s, IsNew = %s, AutoCreate = %s, FormatState = %lu\n",
+                   PartEntry->PartitionNumber, PartEntry->PartitionIndex,
+                   PartEntry->PartitionType, PartEntry->LogicalPartition ? "TRUE" : "FALSE",
+                   PartEntry->IsPartitioned ? "TRUE" : "FALSE",
+                   PartEntry->New ? "Yes" : "No",
+                   PartEntry->AutoCreate ? "Yes" : "No",
+                   PartEntry->FormatState);
+
+            if (PartEntry->IsPartitioned)
+                return PartEntry;
+        }
+    }
+
+    return NULL;
+}
+#endif
+
+static
+PPARTENTRY
+GetNextDiskPartition(
+    _In_opt_ PDISKENTRY CurrentDisk,
+    _In_opt_ PPARTENTRY CurrentPart,
+    _In_ BOOLEAN Direction)
+{
+    PLIST_ENTRY PartListHead;
+    PLIST_ENTRY PartListEntry;
+
+    /* Only forward direction supported */
+    ASSERT(Direction);
+    UNREFERENCED_PARAMETER(Direction);
+
+    /* Bail out if no parameters are given: cannot start search */
+    if (!CurrentDisk && !CurrentPart)
+        return NULL;
+
+    if (CurrentDisk && (!CurrentPart || (CurrentDisk != CurrentPart->DiskEntry)))
+    {
+        /* We have a disk but either, no current partition, or it is present on
+         * a different disk: restart the search at the first primary partition */
+        PartListEntry = &CurrentDisk->PrimaryPartListHead;
+        goto Quit;
+    }
+    /* else: (CurrentPart && (!CurrentDisk || (CurrentDisk == CurrentPart->DiskEntry)))
+     * and continue the search with the next partition */
+
+    /* Get the current partition's disk */
+    ASSERT(CurrentPart);
+    CurrentDisk = CurrentPart->DiskEntry;
+
+    PartListEntry = &CurrentPart->ListEntry;
+
+    /* In case of MBR disks only, check for logical partitions */
+    if ((CurrentDisk->DiskStyle == PARTITION_STYLE_MBR) &&
+        (CurrentPart->LogicalPartition))
+    {
+        ASSERT(CurrentDisk->ExtendedPartition);
+
+        /* The next entry is in the logical partitions list,
+         * check whether we reached its end. */
+        PartListHead = &CurrentDisk->LogicalPartListHead;
+        CurrentPart = GetAdjPartListEntry(PartListHead, PartListEntry, TRUE);
+    }
+    else
+    {
+Quit:
+        PartListHead = &CurrentDisk->PrimaryPartListHead;
+        CurrentPart = GetAdjPartListEntry(PartListHead, PartListEntry, TRUE);
+        if (!CurrentPart)
+        {
+            /* In case of MBR disks only, check for logical partitions */
+            if (CurrentDisk->DiskStyle == PARTITION_STYLE_MBR)
             {
-                ASSERT(DiskEntry == PartEntry->DiskEntry);
-                if (pDiskEntry) *pDiskEntry = DiskEntry;
-                *pPartEntry = PartEntry;
-                return TRUE;
+                PartListHead = &CurrentDisk->LogicalPartListHead;
+                // PartListEntry = PartListHead;
+                CurrentPart = GetAdjPartListEntry(PartListHead, PartListHead, TRUE);
             }
         }
     }
 
-    if (pDiskEntry) *pDiskEntry = NULL;
-    *pPartEntry = NULL;
+    // CurrentPart = GetAdjPartListEntry(PartListHead, PartListEntry, TRUE);
 
-    return FALSE;
+    /* If CurrentPart == NULL, we exhausted all the partitions
+     * in the logical list, we are done for this disk */
+
+    return CurrentPart;
 }
 
-BOOLEAN
-GetNextUncheckedPartition(
-    IN PPARTLIST List,
-    OUT PDISKENTRY *pDiskEntry OPTIONAL,
-    OUT PPARTENTRY *pPartEntry)
+PPARTENTRY
+GetNextDataPartition(
+    _In_ PPARTLIST List,
+    _In_opt_ PPARTENTRY CurrentPart)
 {
-    PLIST_ENTRY Entry1, Entry2;
-    PDISKENTRY DiskEntry;
-    PPARTENTRY PartEntry;
-
-    for (Entry1 = List->DiskListHead.Flink;
-         Entry1 != &List->DiskListHead;
-         Entry1 = Entry1->Flink)
+    /* Continue enumerating while we have something */
+    while ((CurrentPart = GetAdjPartitionEx(List, CurrentPart, TRUE,
+                                            GetNextDiskPartition)))
     {
-        DiskEntry = CONTAINING_RECORD(Entry1,
-                                      DISKENTRY,
-                                      ListEntry);
-
-        if (DiskEntry->DiskStyle == PARTITION_STYLE_GPT)
-        {
-            DPRINT("GPT-partitioned disk detected, not currently supported by SETUP!\n");
-            continue;
-        }
-
-        for (Entry2 = DiskEntry->PrimaryPartListHead.Flink;
-             Entry2 != &DiskEntry->PrimaryPartListHead;
-             Entry2 = Entry2->Flink)
-        {
-            PartEntry = CONTAINING_RECORD(Entry2, PARTENTRY, ListEntry);
-            if (PartEntry->IsPartitioned && PartEntry->NeedsCheck)
-            {
-                ASSERT(DiskEntry == PartEntry->DiskEntry);
-                if (pDiskEntry) *pDiskEntry = DiskEntry;
-                *pPartEntry = PartEntry;
-                return TRUE;
-            }
-        }
-
-        for (Entry2 = DiskEntry->LogicalPartListHead.Flink;
-             Entry2 != &DiskEntry->LogicalPartListHead;
-             Entry2 = Entry2->Flink)
-        {
-            PartEntry = CONTAINING_RECORD(Entry2, PARTENTRY, ListEntry);
-            if (PartEntry->IsPartitioned && PartEntry->NeedsCheck)
-            {
-                ASSERT(DiskEntry == PartEntry->DiskEntry);
-                if (pDiskEntry) *pDiskEntry = DiskEntry;
-                *pPartEntry = PartEntry;
-                return TRUE;
-            }
-        }
+        if (CurrentPart->IsPartitioned)
+            return CurrentPart;
     }
 
-    if (pDiskEntry) *pDiskEntry = NULL;
-    *pPartEntry = NULL;
-
-    return FALSE;
+    return NULL;
 }
 
 /* EOF */

@@ -689,6 +689,8 @@ InitSystemPartition(
      */
     if (!SystemPartition->IsPartitioned)
     {
+        /* Automatically create the partition; it will
+         * be formatted later with default parameters */
         CreatePartition(PartitionList,
                         SystemPartition,
                         0LL, // SystemPartition->SectorCount.QuadPart,

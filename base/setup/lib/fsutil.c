@@ -1046,6 +1046,7 @@ FsVolCommitOpsQueue(
     IN PVOID Context OPTIONAL)
 {
     BOOLEAN Success = TRUE; // Suppose success.
+    BOOLEAN Restart = TRUE; // Restart enumerating unformatted partitions.
     FSVOL_OP Result;
     PPARTENTRY PartEntry;
 
@@ -1146,8 +1147,7 @@ NextFormat:
                 if (SystemPartition != InstallPartition)
                 {
                     /* The system partition is separate, so it had better be formatted! */
-                    ASSERT((SystemPartition->FormatState == Preformatted) ||
-                           (SystemPartition->FormatState == Formatted));
+                    ASSERT(SystemPartition->FormatState == Formatted);
 
                     /* Require a filesystem check on the system partition too */
                     SystemPartition->NeedsCheck = TRUE;
@@ -1172,11 +1172,15 @@ NextFormat:
         case FormatInstallPartition:
         case FormatOtherPartition:
         {
-            if (GetNextUnformattedPartition(PartitionList,
-                                            NULL,
-                                            &PartEntry))
+            /* Check whether we need to restart enumerating unformatted partitions */
+            if (Restart)
             {
-                ASSERT(PartEntry);
+                PartEntry = NULL;
+                Restart = FALSE;
+            }
+            PartEntry = GetNextUnformattedPartition(PartitionList, PartEntry);
+            if (PartEntry)
+            {
                 PartEntry->NeedsCheck = TRUE;
 
                 if (FormatState == FormatInstallPartition)
@@ -1248,14 +1252,15 @@ StartCheckQueue:
     if (Result == FSVOL_ABORT)
         return FALSE;
 
+    PartEntry = NULL;
 NextCheck:
-    if (!GetNextUncheckedPartition(PartitionList, NULL, &PartEntry))
+    PartEntry = GetNextUncheckedPartition(PartitionList, PartEntry);
+    if (!PartEntry)
     {
         Success = TRUE;
         goto EndCheck;
     }
 
-    ASSERT(PartEntry);
     Result = DoChecking(PartEntry, Context, FsVolCallback);
     if (Result == FSVOL_ABORT)
     {

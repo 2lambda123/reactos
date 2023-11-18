@@ -559,7 +559,7 @@ PrintDiskData(
                            DiskEntry,
                            PrimaryPartEntry);
 
-        if (IsContainerPartition(PrimaryPartEntry->PartitionType))
+        if (PrimaryPartEntry == DiskEntry->ExtendedPartition)
         {
             for (LogicalEntry = DiskEntry->LogicalPartListHead.Flink;
                  LogicalEntry != &DiskEntry->LogicalPartListHead;
@@ -833,28 +833,21 @@ DrawPartitionList(
     }
 }
 
+/**
+ * @param[in]   Direction
+ * TRUE or FALSE to scroll to the next (down) or previous (up) entry, respectively.
+ **/
 VOID
-ScrollDownPartitionList(
-    IN PPARTLIST_UI ListUi)
+ScrollUpDownPartitionList(
+    _In_ PPARTLIST_UI ListUi,
+    _In_ BOOLEAN Direction)
 {
-    PPARTENTRY NextPart = GetNextPartition(ListUi->List, ListUi->CurrentPartition);
-    if (NextPart)
+    PPARTENTRY PartEntry =
+        GetAdjPartition(ListUi->List, ListUi->CurrentPartition, Direction);
+    if (PartEntry)
     {
-        ListUi->CurrentPartition = NextPart;
-        ListUi->CurrentDisk = NextPart->DiskEntry;
-        DrawPartitionList(ListUi);
-    }
-}
-
-VOID
-ScrollUpPartitionList(
-    IN PPARTLIST_UI ListUi)
-{
-    PPARTENTRY PrevPart = GetPrevPartition(ListUi->List, ListUi->CurrentPartition);
-    if (PrevPart)
-    {
-        ListUi->CurrentPartition = PrevPart;
-        ListUi->CurrentDisk = PrevPart->DiskEntry;
+        ListUi->CurrentPartition = PartEntry;
+        ListUi->CurrentDisk = PartEntry->DiskEntry;
         DrawPartitionList(ListUi);
     }
 }
