@@ -927,6 +927,7 @@ DoFormatting(
 
     ASSERT(PartEntry->IsPartitioned && PartEntry->PartitionNumber != 0);
 
+    RtlZeroMemory(&PartInfo, sizeof(PartInfo));
     PartInfo.PartEntry = PartEntry;
 
 RetryFormat:
@@ -994,6 +995,7 @@ DoChecking(
     ASSERT(*PartEntry->FileSystem);
 #endif
 
+    RtlZeroMemory(&PartInfo, sizeof(PartInfo));
     PartInfo.PartEntry = PartEntry;
 
 RetryCheck:
