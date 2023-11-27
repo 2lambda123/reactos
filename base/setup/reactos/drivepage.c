@@ -205,6 +205,34 @@ PartitionDlgProc(
             PartEntry = PartInfo->PartEntry;
             DiskEntry = PartEntry->DiskEntry;
 
+            /* Set the maximum size the partition can have */
+            MaxSize = (PartEntry->SectorCount.QuadPart * DiskEntry->BytesPerSector) / MB;  /* in MBytes (rounded) */
+            if (MaxSize > PARTITION_MAXSIZE)
+                MaxSize = PARTITION_MAXSIZE;
+            PartCreateCtx->MaxSize = MaxSize;
+
+            SendDlgItemMessageW(hDlg, IDC_UPDOWN_PARTSIZE, UDM_SETRANGE32, (WPARAM)1, (LPARAM)MaxSize);
+            SendDlgItemMessageW(hDlg, IDC_UPDOWN_PARTSIZE, UDM_SETPOS32, 0, (LPARAM)MaxSize);
+            // SetDlgItemInt(hDlg, IDC_EDIT_PARTSIZE, MaxSize, FALSE);
+
+            /* Default to regular partition (non-extended on MBR disks) */
+            CheckDlgButton(hDlg, IDC_CHECK_MBREXTPART, BST_UNCHECKED);
+
+            /* Also, disable and hide IDC_CHECK_MBREXTPART
+             * if space is logical or the disk is not MBR */
+            if ((DiskEntry->DiskStyle == PARTITION_STYLE_MBR) &&
+                !PartEntry->LogicalPartition)
+            {
+                ShowWindow(GetDlgItem(hDlg, IDC_CHECK_MBREXTPART), SW_SHOW);
+                EnableDlgItem(hDlg, IDC_CHECK_MBREXTPART, TRUE);
+            }
+            else
+            {
+                ShowWindow(GetDlgItem(hDlg, IDC_CHECK_MBREXTPART), SW_HIDE);
+                EnableDlgItem(hDlg, IDC_CHECK_MBREXTPART, FALSE);
+            }
+
+
             /* List the well-known filesystems */
             while (GetRegisteredFileSystems(Index++, &FileSystemName))
             {
@@ -232,18 +260,9 @@ PartitionDlgProc(
                 SendDlgItemMessageW(hDlg, IDC_FSTYPE, CB_INSERTSTRING, -1, (LPARAM)L"Existing filesystem");
             }
 
+            /* Check the quick-format option by default as it speeds up formatting */
+            CheckDlgButton(hDlg, IDC_CHECK_QUICKFMT, BST_CHECKED);
 
-            MaxSize = (PartEntry->SectorCount.QuadPart * DiskEntry->BytesPerSector) / MB;  /* in MBytes (rounded) */
-            if (MaxSize > PARTITION_MAXSIZE)
-                MaxSize = PARTITION_MAXSIZE;
-            PartCreateCtx->MaxSize = MaxSize;
-
-            SendDlgItemMessageW(hDlg, IDC_UPDOWN_PARTSIZE, UDM_SETRANGE32, (WPARAM)1, (LPARAM)MaxSize);
-            SendDlgItemMessageW(hDlg, IDC_UPDOWN_PARTSIZE, UDM_SETPOS32, 0, (LPARAM)MaxSize);
-            // SetDlgItemInt(hDlg, IDC_EDIT_PARTSIZE, MaxSize, FALSE);
-
-            // TODO: If space is logical, or we are not MBR, disable and hide IDC_CHECK_MBREXTPART
-            CheckDlgButton(hDlg, IDC_CHECK_MBREXTPART, BST_UNCHECKED);
             break;
         }
 
@@ -286,26 +305,23 @@ PartitionDlgProc(
                 if (IsDlgButtonChecked(hDlg, IDC_CHECK_MBREXTPART) == BST_CHECKED)
                 {
                     /* It is, disable formatting options */
-                    // EnableDlgItem(hDlg, IDC_EDIT_WINDOW_POS_LEFT, FALSE); // FIXME: disable the static label as well
+                    EnableDlgItem(hDlg, IDC_FS_STATIC, FALSE);
                     EnableDlgItem(hDlg, IDC_FSTYPE, FALSE);
                     EnableDlgItem(hDlg, IDC_CHECK_QUICKFMT, FALSE);
                 }
                 else
                 {
                     /* It is not, re-enable formatting options */
-                    // EnableDlgItem(hDlg, IDC_EDIT_WINDOW_POS_LEFT, TRUE); // FIXME: enable the static label as well
+                    EnableDlgItem(hDlg, IDC_FS_STATIC, TRUE);
                     EnableDlgItem(hDlg, IDC_FSTYPE, TRUE);
                     EnableDlgItem(hDlg, IDC_CHECK_QUICKFMT, TRUE);
                 }
                 break;
             }
 
-            case IDC_CHECK_QUICKFMT:
-                break;
-
             case IDOK:
             {
-                PPARTINFO PartInfo  = PartCreateCtx->PartInfo;
+                PPARTINFO  PartInfo  = PartCreateCtx->PartInfo;
                 PPARTENTRY PartEntry = PartInfo->PartEntry;
                 PDISKENTRY DiskEntry = PartEntry->DiskEntry;
                 /*ULONGLONG*/ ULONG PartSize;
@@ -372,8 +388,9 @@ PartitionDlgProc(
                         // FIXME
                     }
 
-                    // See also FORMAT_PARTITION_INFO
-                /* Input information given by the 'FSVOLNOTIFY_STARTFORMAT' step ****/
+                    /* Cached input information that will be set to the
+                     * FORMAT_PARTITION_INFO structure given to the
+                     * 'FSVOLNOTIFY_STARTFORMAT' step */
                     // TODO: Think about which values could be defaulted...
                     // PartInfo->FileSystemName = SelectedFileSystem->FileSystem;
                     PartInfo->MediaFlag = FMIFS_HARDDISK;
@@ -381,7 +398,6 @@ PartitionDlgProc(
                     PartInfo->QuickFormat =
                         (IsDlgButtonChecked(hDlg, IDC_CHECK_QUICKFMT) == BST_CHECKED);
                     PartInfo->ClusterSize = 0;
-                    // PartInfo->Callback = FormatCallback;
                 }
 
                 // TODO: Consider doing something else if CreatePartition() fails?

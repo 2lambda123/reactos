@@ -71,8 +71,9 @@
 #define IDC_UPDOWN_PARTSIZE     2092
 #define IDC_UNIT                2093
 #define IDC_CHECK_MBREXTPART    2094
-#define IDC_FSTYPE              2095
-#define IDC_CHECK_QUICKFMT      2096
+#define IDC_FS_STATIC           2095
+#define IDC_FSTYPE              2096
+#define IDC_CHECK_QUICKFMT      2097
 
 
 /* Strings */
