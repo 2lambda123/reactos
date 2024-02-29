@@ -2,7 +2,7 @@ repo_name: 2lambda123/reactos
 report_id: 22379e86f7af0c00adf163c5d33f62ec
 version: 0.1
 repo_type: Public
-timestamp: '2024-01-09T08:44:57+00:00'
+timestamp: '2024-02-29T19:19:09+00:00'
 requested_by: AndreiMiloiu
 provider: github
 branch: master
@@ -137,7 +137,7 @@ tools:
   last_updated_by: Eric Kohl
   last_updated_on: 2020-03-15 13:19:42.000000000 Z
 - name: CMake
-  description: 'An open-source system that manages the build process '
+  description: An open-source system that manages the build process
   website_url: http://www.cmake.org/
   open_source: false
   hosted_saas: false
